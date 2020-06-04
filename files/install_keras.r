@@ -4,5 +4,5 @@ if (!require(pkg, character.only = TRUE)) {
                    repos='http://cran.r-project.org')
 }
 library(keras)
-# CPU version
+# CPU version; GPU version requires '= "gpu"'
 install_keras(method = "conda", tensorflow = "cpu")
