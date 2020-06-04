@@ -1,18 +1,26 @@
 
 library(keras)
 
-# CPU version
-install_keras(method = "conda", tensorflow = "cpu")
+# # CPU version
+# install_keras(method = "conda", tensorflow = "cpu")
 
-# # GPU version
-# install_keras(method = "conda", tensorflow = "gpu")
+# FBR: load data from external csv files
+# FBR: take the code from oplsr R script probably
 
+# load data
 dataset <- dataset_boston_housing()
 
 train_data <- dataset$train$x
+
+nb_lines <- dim(train_data)[1]
+nb_cols <- dim(train_data)[2]
+
 train_targets <- dataset$train$y
 
 test_data <- dataset$test$x
+
+# FBR: check nb_cols in test_data and assert
+
 test_targets <- dataset$test$y
 
 # normalize data
@@ -23,16 +31,31 @@ test_data <- scale(test_data, center = mean, scale = std)
 
 # define the model architecture
 build_model <- function() {
+    # FBR: there are 64 units in a hidden layer while the input has 13 columns ?!
+    #      it already looks overdimensioned
     model <- keras_model_sequential() %>%
-    layer_dense(units = 64, activation = "relu",
-                input_shape = dim(train_data)[[2]]) %>%
+    layer_dense(units = 64, activation = "relu", input_shape = nb_cols) %>%
     layer_dense(units = 64, activation = "relu") %>%
     layer_dense(units = 1)
 
     # FBR: I should have R2 as loss and metrics probably
     model %>% compile(
+        # optimizers 8 choices !
+        # SGD
+        # RMSprop
+        # Adam
+        # Adadelta
+        # Adagrad
+        # Adamax
+        # Nadam
+        # Ftrl
         optimizer = "rmsprop",
+        # mse "mean squared error"
+        # mae "mean absolute error"
+        # FBR: I want (1 - R2)
         loss = "mse",
+        # same choice as loss: mse or mae
+        # FBR: I want R2
         metrics = c("mae")
     )
 }
