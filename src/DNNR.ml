@@ -1,4 +1,9 @@
 
+module L = BatList
+module Log = Dolog.Log
+
+open Printf
+
 (* cf. https://keras.io/api/optimizers/ *)
 type optimizer = SGD (* Stochastic Gradient Descent *)
                | RMSprop
@@ -9,15 +14,104 @@ type optimizer = SGD (* Stochastic Gradient Descent *)
                | Nadam
                | Ftrl
 
+let string_of_optimizer = function
+  | SGD -> "SGD"
+  | RMSprop -> "RMSprop"
+  | Adam -> "Adam"
+  | Adadelta -> "Adadelta"
+  | Adagrad -> "Adagrad"
+  | Adamax -> "Adamax"
+  | Nadam -> "Nadam"
+  | Ftrl -> "Ftrl"
+
 (* cf. https://keras.io/api/losses/
  * and https://keras.io/api/metrics/ *)
-type loss_or_metric = MSE (* Mean Squared Error *)
-                    | MAE (* Mean Absolute Error *)
+type metric = MSE (* Mean Squared Error *)
+            | MAE (* Mean Absolute Error *)
 
-(* constrain the range the output can take *)
-type activation_function = None (* value in any range can be output *)
-                         | Relu (* classic choice for hidden layers *)
-                         | Sigmoid (* for probabilistic output *)
+let string_of_metric = function
+  | MSE -> "MSE"
+  | MAE -> "MAE"
+
+(* hidden layer activation function *)
+type active_fun = Relu
+                | Sigmoid
+
+let string_of_activation = function
+  | Relu -> "relu"
+  | Sigmoid -> "sigmoid"
 
 type hidden_layer = { units: int;
-                      activation: activation_function }
+                      activation: active_fun }
+
+let string_of_layers nb_cols layers =
+  let buff = Buffer.create 80 in
+  L.iteri (fun i { units; activation } ->
+      bprintf buff
+        "layer_dense(units = %d, activation = '%s'"
+        units (string_of_activation activation);
+      (if i = 0 then
+         bprintf buff ", input_shape = %d" nb_cols
+      );
+      bprintf buff ") %%>%%\n"
+    ) layers;
+  Buffer.contents buff
+
+let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
+  (* create R script and store it in a temp file *)
+  let r_script_fn = Filename.temp_file "odnnr_train_" ".r" in
+  let r_model_fn = Filename.temp_file "odnnr_model_" ".bin" in
+  let nb_cols =
+    let csv_header = Utls.first_line train_data_csv_fn in
+    BatString.count_char csv_header ' ' in
+  Utls.with_out_file r_script_fn (fun out ->
+      fprintf out
+        "library(keras, quietly = TRUE)\n\
+         train_fn = '%s'\n\
+         training_set <- as.matrix(read.table(train_fn, colClasses = 'numeric',\n\
+                                              header = TRUE))\n\
+         cols_count = dim(training_set)[2]\n\
+         train_data <- training_set[, 2:cols_count]\n\
+         train_targets <- training_set[, 1:1]\n\
+         mean <- apply(train_data, 2, mean)\n\
+         std <- apply(train_data, 2, sd)\n\
+         train_data <- scale(train_data, center = mean, scale = std)\n\
+         \n\
+         build_model <- function() {\n\
+           model <- keras_model_sequential() %%>%%\n\
+           %s\n\
+           layer_dense(units = 1)\n\
+         \n\
+           model %%>%% compile(\n\
+             optimizer = '%s',\n\
+             loss = '%s',\n\
+             metrics = c('%s')\n\
+           )\n\
+         }\n\
+         \n\
+         model <- build_model()\n\
+         \n\
+         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = 1,\n\
+                         verbose = 1)\n\
+         \n\
+         serialized <- serialize_model(model)\n\
+         save(list = c('mean', 'std', 'serialized'), file = '%s')\n\
+         quit()\n"
+        train_data_csv_fn
+        (string_of_layers nb_cols hidden_layers)
+        (string_of_optimizer opt)
+        (string_of_metric loss)
+        (string_of_metric metric)
+        epochs
+        r_model_fn
+    );
+  let r_log_fn = Filename.temp_file "odnnr_train_" ".log" in
+  (* execute it *)
+  let cmd =
+    sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
+  if debug then Log.debug "%s" cmd;
+  if Sys.command cmd <> 0 then
+    failwith ("DNNR.train: R failure: " ^ cmd);
+  if not debug then
+    List.iter Sys.remove [r_script_fn; r_log_fn];
+  r_model_fn
