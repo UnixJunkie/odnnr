@@ -1,45 +1,66 @@
 
-library(keras)
+library(keras, quietly = TRUE)
 
 # # CPU version
 # install_keras(method = "conda", tensorflow = "cpu")
 
-# FBR: load data from external csv files
-# FBR: take the code from oplsr R script probably
+# # load data from library dataset
+# dataset <- dataset_boston_housing()
+# train_data <- dataset$train$x
+# nb_lines <- dim(train_data)[1]
+# nb_cols <- dim(train_data)[2]
+# train_targets <- dataset$train$y
+# test_data <- dataset$test$x
+# nb_cols_test <- dim(test_data)[2]
+# stopifnot(nb_cols == nb_cols_test)
+# test_targets <- dataset$test$y
 
-# load data
-dataset <- dataset_boston_housing()
+# load data from external csv files
+train_fn = "data/Boston_regr_train.csv"
+test_fn = "data/Boston_regr_test.csv"
 
-train_data <- dataset$train$x
+# train_fn = "data/solubility_train_std_01.csv"
+# test_fn = "data/solubility_test_std_01.csv" 
 
-nb_lines <- dim(train_data)[1]
+training_set <- as.matrix(read.table(train_fn, colClasses = "numeric",
+                                     header = TRUE))
+lines_count = dim(training_set)[1]
+cols_count = dim(training_set)[2]
+
+test_set <- as.matrix(read.table(test_fn, colClasses = "numeric",
+                                 header = TRUE))
+
+nb_cols_test <- dim(test_set)[2]
+stopifnot(cols_count == nb_cols_test)
+
+train_data <- training_set[, 2:cols_count] # all lines, all columns except 1st
 nb_cols <- dim(train_data)[2]
+train_targets <- training_set[, 1:1] # all lines, only 1st column (resp. var)
 
-train_targets <- dataset$train$y
-
-test_data <- dataset$test$x
-
-nb_cols_test <- dim(test_data)[2]
-stopifnot(nb_cols == nb_cols_test)
-
-test_targets <- dataset$test$y
-
-# normalize data
+# normalize train data
 mean <- apply(train_data, 2, mean)
 std <- apply(train_data, 2, sd)
 train_data <- scale(train_data, center = mean, scale = std)
+
+test_data <- test_set[, 2:cols_count]
+# normalize test data
 test_data <- scale(test_data, center = mean, scale = std)
+test_targets <- test_set[, 1:1]
 
 # define the model architecture
 build_model <- function() {
-    # FBR: there are 64 units in a hidden layer while the input has 13 columns ?!
-    #      it already looks overdimensioned
+    # there are 64 units per hidden layer while the input has 13 columns ?!
     model <- keras_model_sequential() %>%
     layer_dense(units = 64, activation = "relu", input_shape = nb_cols) %>%
-    layer_dense(units = 64, activation = "relu") %>%
+    layer_dense(units = 64, activation = "relu") %>% 
     layer_dense(units = 1)
 
-    # FBR: I should have R2 as loss and metrics probably
+    ## with 2 layers of size 64: 1s 2ms/step - loss: 6.1750 - mae: 1.6072
+    ## with 3 layers of size 64: 1s 2ms/step - loss: 29.8944 - mae: 1.4733
+    ## with 2 layers of size 13: 1s 2ms/step - loss: 9.7488 - mae: 2.0388
+    ## with 3 layers of size 13: 1s 2ms/step - loss: 7.6201 - mae: 1.8527
+
+    # R2 as metric not available in keras...
     model %>% compile(
         # optimizers 8 choices !
         # SGD
@@ -53,10 +74,10 @@ build_model <- function() {
         optimizer = "rmsprop",
         # mse "mean squared error"
         # mae "mean absolute error"
-        # FBR: I want (1 - R2)
+        # FBR: I would like (1 - R2)
         loss = "mse",
         # same choice as loss: mse or mae
-        # FBR: I want R2
+        # FBR: I would like R2
         metrics = c("mae")
     )
 }
