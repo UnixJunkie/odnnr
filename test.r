@@ -19,7 +19,8 @@ train_targets <- dataset$train$y
 
 test_data <- dataset$test$x
 
-# FBR: check nb_cols in test_data and assert
+nb_cols_test <- dim(test_data)[2]
+stopifnot(nb_cols == nb_cols_test)
 
 test_targets <- dataset$test$y
 
