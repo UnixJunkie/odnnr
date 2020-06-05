@@ -27,11 +27,6 @@ training_set <- as.matrix(read.table(train_fn, colClasses = "numeric",
 lines_count = dim(training_set)[1]
 cols_count = dim(training_set)[2]
 
-test_set <- as.matrix(read.table(test_fn, colClasses = "numeric",
-                                 header = TRUE))
-
-nb_cols_test <- dim(test_set)[2]
-stopifnot(cols_count == nb_cols_test)
 
 train_data <- training_set[, 2:cols_count] # all lines, all columns except 1st
 nb_cols <- dim(train_data)[2]
@@ -41,11 +36,6 @@ train_targets <- training_set[, 1:1] # all lines, only 1st column (resp. var)
 mean <- apply(train_data, 2, mean)
 std <- apply(train_data, 2, sd)
 train_data <- scale(train_data, center = mean, scale = std)
-
-test_data <- test_set[, 2:cols_count]
-# normalize test data
-test_data <- scale(test_data, center = mean, scale = std)
-test_targets <- test_set[, 1:1]
 
 # define the model architecture
 build_model <- function() {
@@ -86,5 +76,22 @@ model <- build_model()
 
 model %>% fit(train_data, train_targets, epochs = 50, batch_size = 1,
               verbose = 1)
+
+serialized_trained_model <- serialize_model(model)
+save(list = c("mean", "std", "serialized"), file = "saved.Rdata")
+
+load("saved.Rdata")
+# normalize test data
+test_set <- as.matrix(read.table(test_fn, colClasses = "numeric",
+                                 header = TRUE))
+nb_cols_test <- dim(test_set)[2]
+stopifnot(cols_count == nb_cols_test)
+test_data <- test_set[, 2:cols_count]
+
+test_data <- scale(test_data, center = mean, scale = std)
+test_targets <- test_set[, 1:1]
+
+
+
 
 model %>% evaluate(test_data, test_targets, verbose = 0)
