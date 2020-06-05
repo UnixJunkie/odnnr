@@ -41,12 +41,11 @@ let string_of_activation = function
   | Relu -> "relu"
   | Sigmoid -> "sigmoid"
 
-type hidden_layer = { units: int;
-                      activation: active_fun }
+type hidden_layer = int * active_fun
 
 let string_of_layers nb_cols layers =
   let buff = Buffer.create 80 in
-  L.iteri (fun i { units; activation } ->
+  L.iteri (fun i (units, activation) ->
       bprintf buff
         "layer_dense(units = %d, activation = '%s'"
         units (string_of_activation activation);
@@ -115,3 +114,38 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
   if not debug then
     List.iter Sys.remove [r_script_fn; r_log_fn];
   r_model_fn
+
+let predict debug trained_model_fn test_data_csv_fn =
+  let r_script_fn = Filename.temp_file "odnnr_predict_" ".r" in
+  let out_preds_fn = Filename.temp_file "odnnr_preds_" ".txt" in
+  (* create R script and store it in a temp file *)
+  Utls.with_out_file r_script_fn (fun out ->
+      fprintf out
+        "library(keras, quietly = TRUE)\n\
+         test_fn = '%s'\n\
+         load('%s') # NS <- mean, std and serialized\n\
+         model <- unserialize_model(serialized)\n\
+         test_set <- as.matrix(read.table(test_fn, colClasses = 'numeric',\n\
+                                          header = TRUE))\n\
+         cols_count <- dim(test_set)[2]\n\
+         test_data <- test_set[, 2:cols_count]\n\
+         test_data <- scale(test_data, center = mean, scale = std)\n\
+         values <- model %%>%% predict(test_data)\n\
+         write.table(values, file = '%s', sep = '\n',\n\
+                     row.names = F, col.names = F)\n\
+         quit()\n"
+        test_data_csv_fn
+        trained_model_fn
+        out_preds_fn
+    );
+  let r_log_fn = Filename.temp_file "odnnr_train_" ".log" in
+  (* execute it *)
+  let cmd = 
+    sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
+  if debug then Log.debug "%s" cmd;
+  if Sys.command cmd <> 0 then
+    failwith ("DNNR.predict: R failure: " ^ cmd);
+  let preds = Utls.float_list_of_file out_preds_fn in
+  if not debug then
+    List.iter Sys.remove [r_script_fn; r_log_fn; out_preds_fn];
+  preds
