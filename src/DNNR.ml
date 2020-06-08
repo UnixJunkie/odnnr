@@ -1,6 +1,7 @@
 
 module L = BatList
 module Log = Dolog.Log
+module S = BatString
 
 open Printf
 
@@ -64,7 +65,7 @@ let activation_of_string = function
 
 type hidden_layer = int * active_fun
 
-let string_of_layers nb_cols layers =
+let r_string_of_layers nb_cols layers =
   let buff = Buffer.create 80 in
   L.iteri (fun i (units, activation) ->
       bprintf buff
@@ -76,6 +77,12 @@ let string_of_layers nb_cols layers =
       bprintf buff ") %%>%%\n"
     ) layers;
   Buffer.contents buff
+
+let layers_of_string activation s =
+  let int_strings = S.split_on_string s ~by:"/" in
+  L.map (fun int_str ->
+      (int_of_string int_str, activation)
+    ) int_strings
 
 let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
   (* create R script and store it in a temp file *)
@@ -118,7 +125,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
          save(list = c('mean', 'std', 'serialized'), file = '%s')\n\
          quit()\n"
         train_data_csv_fn
-        (string_of_layers nb_cols hidden_layers)
+        (r_string_of_layers nb_cols hidden_layers)
         (string_of_optimizer opt)
         (string_of_metric loss)
         (string_of_metric metric)
