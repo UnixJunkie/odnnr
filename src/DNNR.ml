@@ -41,16 +41,16 @@ type metric = RMSE (* Root Mean Squared Error *)
             | MSE (* Mean Squared Error *)
             | MAE (* Mean Absolute Error *)
 
+let string_of_metric = function
+  | RMSE -> "RMSE"
+  | MSE -> "MSE"
+  | MAE -> "MAE"
+
 let metric_of_string = function
   | "RMSE" -> RMSE
   | "MSE" -> MSE
   | "MAE" -> MAE
   | s -> failwith ("DNNR.metric_of_string: unknown: " ^ s)
-
-let string_of_metric = function
-  | RMSE -> "RMSE"
-  | MSE -> "MSE"
-  | MAE -> "MAE"
 
 (* hidden layer activation function *)
 type active_fun = Relu
@@ -59,6 +59,11 @@ type active_fun = Relu
 let string_of_activation = function
   | Relu -> "relu"
   | Sigmoid -> "sigmoid"
+
+let activation_of_string = function
+  | "relu" -> Relu
+  | "sigmo" -> Sigmoid
+  | s -> failwith ("DNNR.activation_of_string: unknown: " ^ s)
 
 type hidden_layer = int * active_fun
 
