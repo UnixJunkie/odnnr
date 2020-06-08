@@ -97,12 +97,17 @@ let main () =
       exit 1
     end;
   let verbose = CLI.get_set_bool ["-v"] args in
+  let seed = match CLI.get_int_opt ["--seed"] args with
+    | Some s -> s (* reproducible *)
+    | None -> (* random *)
+      let () = Random.self_init () in
+      Random.int 0x3FFFFFFF (* 0x3FFFFFFF = 2^30 - 1 *) in
   let no_plot = CLI.get_set_bool ["--no-plot"] args in
   let maybe_train_fn = CLI.get_string_opt ["--train"] args in
   let maybe_test_fn = CLI.get_string_opt ["--test"] args in
   let nb_epochs = CLI.get_int ["--epochs"] args in
   let nfolds = CLI.get_int_def ["--NxCV"] args 1 in
-  let _train_portion = CLI.get_float_def ["-p"] args 0.8 in
+  let train_portion = CLI.get_float_def ["-p"] args 0.8 in
   let loss =
     let loss_str = CLI.get_string_def ["--loss"] args "MSE" in
     DNNR.metric_of_string loss_str in
@@ -122,11 +127,16 @@ let main () =
   | (Some train_fn, Some test_fn) ->
     train_test verbose no_plot
       optimizer loss hidden_layers nb_epochs train_fn test_fn
-  | (Some _train_fn, None) ->
+  | (Some train_fn', None) ->
     if nfolds > 1 then
       failwith "not implemented yet"
     else
-      (* train/test split *)
-      failwith "not implemented yet"
+      begin
+        (* train/test split *)
+        Log.info "shuffle -> train/test split (p=%.2f)" train_portion;
+        let train_fn, test_fn = shuffle_then_cut seed train_portion train_fn' in
+        train_test verbose no_plot
+          optimizer loss hidden_layers nb_epochs train_fn test_fn
+      end
 
 let () = main ()
