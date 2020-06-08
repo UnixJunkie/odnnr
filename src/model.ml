@@ -40,6 +40,7 @@ let main () =
                (default=RMSE)\n  \
                [--optim {SGD|RMS|Ada|AdaD|AdaG|AdaM|Nada|Ftrl}]: optimizer\n  \
                (default=RMS)\n  \
+               [--active {relu|sigmo}]: hidden layer activation function\n  \
                [-o <filename>]: predictions output file\n  \
                [--no-plot]: don't call gnuplot\n  \
                [-v]: verbose/debug mode\n  \
@@ -53,11 +54,14 @@ let main () =
   let maybe_test_fn = CLI.get_string_opt ["--test"] args in
   let nb_epochs = CLI.get_int ["--epochs"] args in
   let loss =
-    let loss_str = CLI.get_string_def ["--loss"] args "RMSE" in
+    let loss_str = CLI.get_string_def ["--loss"] args "MSE" in
     DNNR.metric_of_string loss_str in
   let optimizer =
     let optim_str = CLI.get_string_def ["--optim"] args "RMS" in
     DNNR.optimizer_of_string optim_str in
+  let activation =
+    let activation_str = CLI.get_string_def ["--active"] args "relu" in
+    DNNR.activation_of_string activation_str in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (Some train_fn, Some test_fn) ->
@@ -67,7 +71,7 @@ let main () =
                 optimizer
                 loss (* loss *)
                 loss (* metric *)
-                [(64, Relu); (64, Relu)] (* architecture *)
+                [(64, activation); (64, activation)] (* architecture *)
                 nb_epochs
                 train_fn
              ) in
