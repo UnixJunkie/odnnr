@@ -5,6 +5,7 @@ module Fn = Filename
 module L = BatList
 module Utls = Odnnr.Utls
 module Log = Dolog.Log
+module Parmap = Parany.Parmap
 
 open Printf
 
@@ -62,7 +63,8 @@ let train_test verbose no_plot
      let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
      Gnuplot.regr_plot title actual preds
   );
-  Log.info "testR2: %f" test_R2
+  Log.info "testR2: %.3f" test_R2;
+  test_R2
 
 let main () =
   Log.(set_log_level DEBUG);
@@ -97,6 +99,7 @@ let main () =
       exit 1
     end;
   let verbose = CLI.get_set_bool ["-v"] args in
+  let ncores = CLI.get_int_def ["-np"] args 1 in
   let seed = match CLI.get_int_opt ["--seed"] args with
     | Some s -> s (* reproducible *)
     | None -> (* random *)
@@ -125,18 +128,29 @@ let main () =
   | (None, None) -> failwith "provide --train and/or --test"
   | (None, Some _test) -> failwith "only --test: not implemented yet"
   | (Some train_fn, Some test_fn) ->
-    train_test verbose no_plot
-      optimizer loss hidden_layers nb_epochs train_fn test_fn
+    ignore(train_test verbose no_plot
+             optimizer loss hidden_layers nb_epochs train_fn test_fn)
   | (Some train_fn', None) ->
     if nfolds > 1 then
-      failwith "not implemented yet"
+      begin
+        (* NxCV *)
+        Log.info "shuffle -> %dxCV" nfolds;
+        let train_test_fns = shuffle_then_nfolds seed nfolds train_fn' in
+        let r2s =
+          Parmap.parmap ncores (fun (train_fn, test_fn) ->
+              train_test verbose no_plot
+                optimizer loss hidden_layers nb_epochs train_fn test_fn
+            ) train_test_fns in
+        let r2_avg = Utls.favg r2s in
+        Log.info "avg testR2: %.3f" r2_avg
+      end
     else
       begin
         (* train/test split *)
         Log.info "shuffle -> train/test split (p=%.2f)" train_portion;
         let train_fn, test_fn = shuffle_then_cut seed train_portion train_fn' in
-        train_test verbose no_plot
-          optimizer loss hidden_layers nb_epochs train_fn test_fn
+        ignore(train_test verbose no_plot
+                 optimizer loss hidden_layers nb_epochs train_fn test_fn)
       end
 
 let () = main ()
