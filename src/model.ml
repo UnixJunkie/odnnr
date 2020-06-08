@@ -1,4 +1,5 @@
 
+module CLI = Minicli.CLI
 module DNNR = Odnnr.DNNR
 module Fn = Filename
 module Utls = Odnnr.Utls
@@ -19,25 +20,58 @@ let extract_values verbose fn =
 let main () =
   Log.(set_log_level DEBUG);
   Log.color_on ();
-  let no_plot = false in
-  let model_fn =
-    DNNR.(train
-            true
-            RMSprop
-            MSE
-            MSE
-            [(64, Relu); (64, Relu)]
-            50
-            "data/Boston_regr_train.csv"
-         ) in
-  Log.info "trained_model: %s" model_fn;
-  let actual = extract_values true "data/Boston_regr_test.csv" in
-  let preds = DNNR.predict true model_fn "data/Boston_regr_test.csv" in
-  let test_R2 = Cpm.RegrStats.r2 actual preds in
-  (if not no_plot then
-     let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
-     Gnuplot.regr_plot title actual preds
-  );
-  Log.info "testR2: %f" test_R2
+  let argc, args = CLI.init () in
+  let train_portion_def = 0.8 in
+  let show_help = CLI.get_set_bool ["-h";"--help"] args in
+  if argc = 1 || show_help then
+    begin
+      eprintf "usage:\n\
+               %s\n  \
+               [--train <train.txt>]: training set\n  \
+               [-p <float>]: train portion; default=%f\n  \
+               [--seed <int>]: RNG seed\n  \
+               [--test <test.txt>]: test set\n  \
+               [--epochs <int>]: optimal number of training epochs\n  \
+               [-np <int>]: max CPU cores\n  \
+               [--NxCV <int>]: number of folds of cross validation\n  \
+               [-s|--save <filename>]: save model to file\n  \
+               [-l|--load <filename>]: restore model from file\n  \
+               [-o <filename>]: predictions output file\n  \
+               [--no-plot]: don't call gnuplot\n  \
+               [-v]: verbose/debug mode\n  \
+               [-h|--help]: show this message\n"
+        Sys.argv.(0) train_portion_def;
+      exit 1
+    end;
+  let verbose = CLI.get_set_bool ["-v"] args in
+  let no_plot = CLI.get_set_bool ["--no-plot"] args in
+  let maybe_train_fn = CLI.get_string_opt ["--train"] args in
+  let maybe_test_fn = CLI.get_string_opt ["--test"] args in
+  let nb_epochs = CLI.get_int ["--epochs"] args in
+  CLI.finalize ();
+  match maybe_train_fn, maybe_test_fn with
+  | (Some train_fn, Some test_fn) ->
+    begin
+      let model_fn =
+        DNNR.(train
+                verbose
+                RMSprop
+                MSE
+                MSE
+                [(64, Relu); (64, Relu)]
+                nb_epochs
+                train_fn
+             ) in
+      Log.info "trained_model: %s" model_fn;
+      let actual = extract_values verbose test_fn in
+      let preds = DNNR.predict verbose model_fn test_fn in
+      let test_R2 = Cpm.RegrStats.r2 actual preds in
+      (if not no_plot then
+         let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
+         Gnuplot.regr_plot title actual preds
+      );
+      Log.info "testR2: %f" test_R2
+    end
+  | _ -> failwith "not implemented yet"
 
 let () = main ()
