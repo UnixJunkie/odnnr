@@ -24,16 +24,33 @@ let string_of_optimizer = function
   | Nadam -> "Nadam"
   | Ftrl -> "Ftrl"
 
+let optimizer_of_string = function
+  | "SGD" -> SGD
+  | "RMS" -> RMSprop
+  | "Ada" -> Adam
+  | "AdaD" -> Adadelta
+  | "AdaG" -> Adagrad
+  | "AdaM" -> Adamax
+  | "Nada" -> Nadam
+  | "Ftrl" -> Ftrl
+  | s -> failwith ("DNNR.optimizer_of_string: unknown: " ^ s)
+
 (* cf. https://keras.io/api/losses/
  * and https://keras.io/api/metrics/ *)
 type metric = RMSE (* Root Mean Squared Error *)
             | MSE (* Mean Squared Error *)
             | MAE (* Mean Absolute Error *)
 
+let metric_of_string = function
+  | "RMSE" -> RMSE
+  | "MSE" -> MSE
+  | "MAE" -> MAE
+  | s -> failwith ("DNNR.metric_of_string: unknown: " ^ s)
+
 let string_of_metric = function
-  | RMSE -> "rmse"
-  | MSE -> "mse"
-  | MAE -> "mae"
+  | RMSE -> "RMSE"
+  | MSE -> "MSE"
+  | MAE -> "MAE"
 
 (* hidden layer activation function *)
 type active_fun = Relu
