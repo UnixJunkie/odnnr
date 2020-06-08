@@ -41,6 +41,7 @@ let main () =
                [--optim {SGD|RMS|Ada|AdaD|AdaG|AdaM|Nada|Ftrl}]: optimizer\n  \
                (default=RMS)\n  \
                [--active {relu|sigmo}]: hidden layer activation function\n  \
+               [--arch {<int>/<int>/...}]: size of each hidden layer\n  \
                [-o <filename>]: predictions output file\n  \
                [--no-plot]: don't call gnuplot\n  \
                [-v]: verbose/debug mode\n  \
@@ -62,6 +63,9 @@ let main () =
   let activation =
     let activation_str = CLI.get_string_def ["--active"] args "relu" in
     DNNR.activation_of_string activation_str in
+  let hidden_layers =
+    let arch_str = CLI.get_string_def ["--arch"] args "64/64" in
+    DNNR.layers_of_string activation arch_str in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (Some train_fn, Some test_fn) ->
@@ -71,7 +75,7 @@ let main () =
                 optimizer
                 loss (* loss *)
                 loss (* metric *)
-                [(64, activation); (64, activation)] (* architecture *)
+                hidden_layers
                 nb_epochs
                 train_fn
              ) in
