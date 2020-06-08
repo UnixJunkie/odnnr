@@ -26,12 +26,14 @@ let string_of_optimizer = function
 
 (* cf. https://keras.io/api/losses/
  * and https://keras.io/api/metrics/ *)
-type metric = MSE (* Mean Squared Error *)
+type metric = RMSE (* Root Mean Squared Error *)
+            | MSE (* Mean Squared Error *)
             | MAE (* Mean Absolute Error *)
 
 let string_of_metric = function
-  | MSE -> "MSE"
-  | MAE -> "MAE"
+  | RMSE -> "rmse"
+  | MSE -> "mse"
+  | MAE -> "mae"
 
 (* hidden layer activation function *)
 type active_fun = Relu
