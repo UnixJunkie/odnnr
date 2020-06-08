@@ -36,6 +36,10 @@ let main () =
                [--NxCV <int>]: number of folds of cross validation\n  \
                [-s|--save <filename>]: save model to file\n  \
                [-l|--load <filename>]: restore model from file\n  \
+               [--loss {RMSE|MSE|MAE}]: minimized loss and perf. metric\n  \
+               (default=RMSE)\n  \
+               [--optim {SGD|RMS|Ada|AdaD|AdaG|AdaM|Nada|Ftrl}]: optimizer\n  \
+               (default=RMS)\n  \
                [-o <filename>]: predictions output file\n  \
                [--no-plot]: don't call gnuplot\n  \
                [-v]: verbose/debug mode\n  \
@@ -48,17 +52,22 @@ let main () =
   let maybe_train_fn = CLI.get_string_opt ["--train"] args in
   let maybe_test_fn = CLI.get_string_opt ["--test"] args in
   let nb_epochs = CLI.get_int ["--epochs"] args in
+  let loss =
+    let loss_str = CLI.get_string_def ["--loss"] args "RMSE" in
+    DNNR.metric_of_string loss_str in
+  let optimizer =
+    let optim_str = CLI.get_string_def ["--optim"] args "RMS" in
+    DNNR.optimizer_of_string optim_str in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (Some train_fn, Some test_fn) ->
     begin
       let model_fn =
-        DNNR.(train
-                verbose
-                RMSprop
-                MSE
-                MSE
-                [(64, Relu); (64, Relu)]
+        DNNR.(train verbose
+                optimizer
+                loss (* loss *)
+                loss (* metric *)
+                [(64, Relu); (64, Relu)] (* architecture *)
                 nb_epochs
                 train_fn
              ) in
