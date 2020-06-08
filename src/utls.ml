@@ -235,3 +235,7 @@ let exponential_scan n =
 
 let fst3 (a, _, _) =
   a
+
+let favg = function
+  | [] -> 0.0 (* protect against empty list *)
+  | xs -> L.favg xs
