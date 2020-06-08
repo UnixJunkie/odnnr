@@ -37,17 +37,14 @@ let optimizer_of_string = function
 
 (* cf. https://keras.io/api/losses/
  * and https://keras.io/api/metrics/ *)
-type metric = RMSE (* Root Mean Squared Error *)
-            | MSE (* Mean Squared Error *)
+type metric = MSE (* Mean Squared Error *)
             | MAE (* Mean Absolute Error *)
 
 let string_of_metric = function
-  | RMSE -> "RMSE"
   | MSE -> "MSE"
   | MAE -> "MAE"
 
 let metric_of_string = function
-  | "RMSE" -> RMSE
   | "MSE" -> MSE
   | "MAE" -> MAE
   | s -> failwith ("DNNR.metric_of_string: unknown: " ^ s)
@@ -102,7 +99,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
          \n\
          build_model <- function() {\n\
            model <- keras_model_sequential() %%>%%\n\
-           %s\n\
+           %s\
            layer_dense(units = 1)\n\
          \n\
            model %%>%% compile(\n\
@@ -131,7 +128,10 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
   let r_log_fn = Filename.temp_file "odnnr_train_" ".log" in
   (* execute it *)
   let cmd =
-    sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
+    if debug then
+      sprintf "(R --vanilla --slave < %s 2>&1) | tee %s" r_script_fn r_log_fn
+    else
+      sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
   if debug then Log.debug "%s" cmd;
   if Sys.command cmd <> 0 then
     failwith ("DNNR.train: R failure: " ^ cmd);
