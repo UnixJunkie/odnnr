@@ -2,6 +2,7 @@
 module CLI = Minicli.CLI
 module DNNR = Odnnr.DNNR
 module Fn = Filename
+module L = BatList
 module Utls = Odnnr.Utls
 module Log = Dolog.Log
 
@@ -16,6 +17,52 @@ let extract_values verbose fn =
   (* filesystem cleanup *)
   (if not verbose then Sys.remove actual_fn);
   actual
+
+let train_test_dump csv_header train test =
+  let train_fn = Fn.temp_file "odnnr_train_" ".csv" in
+  let test_fn = Fn.temp_file "odnnr_test_" ".csv" in
+  Utls.lines_to_file train_fn (csv_header :: train);
+  Utls.lines_to_file test_fn (csv_header :: test);
+  (train_fn, test_fn)
+
+let shuffle_then_cut seed p train_fn =
+  match Utls.lines_of_file train_fn with
+  | [] | [_] -> assert(false) (* no lines or header line only?! *)
+  | (csv_header :: csv_payload) ->
+    let rng = BatRandom.State.make [|seed|] in
+    let rand_lines = L.shuffle ~state:rng csv_payload in
+    let train, test = Utls.train_test_split p rand_lines in
+    train_test_dump csv_header train test
+
+let shuffle_then_nfolds seed n train_fn =
+  match Utls.lines_of_file train_fn with
+  | [] | [_] -> assert(false) (* no lines or header line only?! *)
+  | (csv_header :: csv_payload) ->
+    let rng = BatRandom.State.make [|seed|] in
+    let rand_lines = L.shuffle ~state:rng csv_payload in
+    let train_tests = Utls.cv_folds n rand_lines in
+    L.rev_map (fun (x, y) -> train_test_dump csv_header x y) train_tests
+
+let train_test verbose no_plot
+    optimizer loss hidden_layers nb_epochs train_fn test_fn =
+  let model_fn =
+    DNNR.(train verbose
+            optimizer
+            loss (* loss *)
+            loss (* metric *)
+            hidden_layers
+            nb_epochs
+            train_fn
+         ) in
+  Log.info "trained_model: %s" model_fn;
+  let actual = extract_values verbose test_fn in
+  let preds = DNNR.predict verbose model_fn test_fn in
+  let test_R2 = Cpm.RegrStats.r2 actual preds in
+  (if not no_plot then
+     let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
+     Gnuplot.regr_plot title actual preds
+  );
+  Log.info "testR2: %f" test_R2
 
 let main () =
   Log.(set_log_level DEBUG);
@@ -54,6 +101,8 @@ let main () =
   let maybe_train_fn = CLI.get_string_opt ["--train"] args in
   let maybe_test_fn = CLI.get_string_opt ["--test"] args in
   let nb_epochs = CLI.get_int ["--epochs"] args in
+  let nfolds = CLI.get_int_def ["--NxCV"] args 1 in
+  let _train_portion = CLI.get_float_def ["-p"] args 0.8 in
   let loss =
     let loss_str = CLI.get_string_def ["--loss"] args "MSE" in
     DNNR.metric_of_string loss_str in
@@ -68,27 +117,16 @@ let main () =
     DNNR.layers_of_string activation arch_str in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
+  | (None, None) -> failwith "provide --train and/or --test"
+  | (None, Some _test) -> failwith "only --test: not implemented yet"
   | (Some train_fn, Some test_fn) ->
-    begin
-      let model_fn =
-        DNNR.(train verbose
-                optimizer
-                loss (* loss *)
-                loss (* metric *)
-                hidden_layers
-                nb_epochs
-                train_fn
-             ) in
-      Log.info "trained_model: %s" model_fn;
-      let actual = extract_values verbose test_fn in
-      let preds = DNNR.predict verbose model_fn test_fn in
-      let test_R2 = Cpm.RegrStats.r2 actual preds in
-      (if not no_plot then
-         let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
-         Gnuplot.regr_plot title actual preds
-      );
-      Log.info "testR2: %f" test_R2
-    end
-  | _ -> failwith "not implemented yet"
+    train_test verbose no_plot
+      optimizer loss hidden_layers nb_epochs train_fn test_fn
+  | (Some _train_fn, None) ->
+    if nfolds > 1 then
+      failwith "not implemented yet"
+    else
+      (* train/test split *)
+      failwith "not implemented yet"
 
 let () = main ()
