@@ -86,19 +86,17 @@ let layers_of_string activation s =
     ) int_strings
 
 (* short textual description of the network architecture (hidden layers only) *)
-let string_of_layers = function
+let string_of_layers l = match l with
   | [] -> assert(false)
-  | (size, activ_fun) :: xs ->
+  | (size, activ_fun) :: _ ->
     let activ_str = string_of_activation activ_fun in
-    Utls.enforce ([activ_fun] = L.sort_uniq compare (L.map snd xs))
+    Utls.enforce (L.for_all (fun (_x, y) -> y = activ_fun) l)
       "DNNR.string_of_layers: diverse activation functions";
-    let sizes = size :: (L.map fst xs) in
-    match L.sort_uniq compare sizes with
-    | [] -> assert(false)
-    | [sz] ->
-      let n = L.length sizes in
-      sprintf "%s(%d^%d)" activ_str sz n
-    | _ ->
+    let sizes = L.map fst l in
+    if L.for_all ((=) size) sizes then
+      let n = L.length l in
+      sprintf "%s(%d^%d)" activ_str size n
+    else
       sprintf "%s%s" activ_str
         (Utls.string_of_list ~pre:"(" ~sep:"/" ~suf:")" string_of_int sizes)
 
