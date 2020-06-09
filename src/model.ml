@@ -67,6 +67,45 @@ let train_test verbose no_plot
   Log.info "%s R2_te: %.3f" arch_str test_R2;
   test_R2
 
+let early_stop verbose optimizer loss hidden_layers
+    max_epochs delta_epochs patience train_fn test_fn =
+  let actual = extract_values verbose test_fn in
+  let arch_str = DNNR.string_of_layers hidden_layers in
+  let model_fn = Fn.temp_file "odnnr_model_" ".bin" in
+  (DNNR.early_stop_init
+     verbose
+     optimizer
+     loss
+     loss
+     hidden_layers
+     delta_epochs
+     train_fn
+     model_fn);
+  let init_R2 =
+    let preds = DNNR.predict verbose model_fn test_fn in
+    Cpm.RegrStats.r2 actual preds in
+  Log.info "%s %d R2_te: %.3f" arch_str delta_epochs init_R2;
+  let rec loop best_R2 best_epochs curr_epochs nb_fails =
+    if curr_epochs >= max_epochs then
+      (Log.error "Model.early_stop: max epochs reached";
+       (best_R2, best_epochs))
+    else if nb_fails = patience then
+      (Log.info "Model.early_stop: patience reached";
+       (best_R2, best_epochs))
+    else
+      begin
+        DNNR.early_stop_continue verbose delta_epochs model_fn;
+        let curr_R2 =
+          let preds = DNNR.predict verbose model_fn test_fn in
+          Cpm.RegrStats.r2 actual preds in
+        Log.info "%s %d R2_te: %.3f" arch_str curr_epochs curr_R2;
+        if curr_R2 > best_R2 then
+          loop curr_R2 curr_epochs (curr_epochs + delta_epochs) 0
+        else (* curr_R2 <= best_R2 *)
+          loop best_R2 best_epochs (curr_epochs + delta_epochs) (nb_fails + 1)
+      end in
+  (model_fn, loop init_R2 delta_epochs delta_epochs 0)
+
 let main () =
   Log.(set_log_level DEBUG);
   Log.color_on ();
