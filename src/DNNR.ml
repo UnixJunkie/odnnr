@@ -163,6 +163,103 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
     List.iter Sys.remove [r_script_fn; r_log_fn];
   r_model_fn
 
+(* create a model for early stopping training *)
+let early_stop_init
+    debug opt loss metric hidden_layers delta_epochs train_data_csv_fn r_model_fn =
+  (* create R script and store it in a temp file *)
+  let r_script_fn = Filename.temp_file "odnnr_estopi_" ".r" in
+  let nb_cols =
+    let csv_header = Utls.first_line train_data_csv_fn in
+    BatString.count_char csv_header ' ' in
+  Utls.with_out_file r_script_fn (fun out ->
+      fprintf out
+        "library(keras, quietly = TRUE)\n\
+         train_fn = '%s'\n\
+         training_set <- as.matrix(read.table(train_fn, colClasses = 'numeric',\n\
+                                              header = TRUE))\n\
+         cols_count = dim(training_set)[2]\n\
+         train_data <- training_set[, 2:cols_count]\n\
+         train_targets <- training_set[, 1:1]\n\
+         mean <- apply(train_data, 2, mean)\n\
+         std <- apply(train_data, 2, sd)\n\
+         train_data <- scale(train_data, center = mean, scale = std)\n\
+         \n\
+         build_model <- function() {\n\
+           model <- keras_model_sequential() %%>%%\n\
+           %s\
+           layer_dense(units = 1)\n\
+         \n\
+           model %%>%% compile(\n\
+             optimizer = '%s',\n\
+             loss = '%s',\n\
+             metrics = c('%s')\n\
+           )\n\
+         }\n\
+         \n\
+         model <- build_model()\n\
+         \n\
+         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = 1,\n\
+                         verbose = 1)\n\
+         \n\
+         serialized <- serialize_model(model)\n\
+         save(list = c('mean', 'std', 'serialized', 'train_data',\n\
+                       'train_targets'), file = '%s')\n\
+         quit()\n"
+        train_data_csv_fn
+        (r_string_of_layers nb_cols hidden_layers)
+        (string_of_optimizer opt)
+        (string_of_metric loss)
+        (string_of_metric metric)
+        delta_epochs
+        r_model_fn
+    );
+  let r_log_fn = Filename.temp_file "odnnr_estopi_" ".log" in
+  (* execute it *)
+  let cmd =
+    if debug then
+      sprintf "(R --vanilla --slave < %s 2>&1) | tee %s" r_script_fn r_log_fn
+    else
+      sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
+  if debug then Log.debug "%s" cmd;
+  if Sys.command cmd <> 0 then
+    failwith ("DNNR.train: R failure: " ^ cmd);
+  if not debug then
+    List.iter Sys.remove [r_script_fn; r_log_fn];
+  r_model_fn
+
+(* continue training an early stop model *)
+let early_stop_continue debug delta_epochs r_model_fn =
+  (* create R script and store it in a temp file *)
+  let r_script_fn = Filename.temp_file "odnnr_estopc_" ".r" in
+  Utls.with_out_file r_script_fn (fun out ->
+      fprintf out
+        "library(keras, quietly = TRUE)\n\
+         load('%s') # NS<-(mean, std, train_data, train_targets, serialized)\n\
+         model <- unserialize_model(serialized)\n\
+         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = 1,\n\
+                         verbose = 1)\n\
+         serialized <- serialize_model(model)\n\
+         save(list = c('mean, 'std', 'train_data', 'train_targets',\n\
+                       'serialized'), file = '%s')\n\
+         quit()\n"
+        r_model_fn
+        delta_epochs
+        r_model_fn
+    );
+  let r_log_fn = Filename.temp_file "odnnr_estopc_" ".log" in
+  (* execute it *)
+  let cmd =
+    if debug then
+      sprintf "(R --vanilla --slave < %s 2>&1) | tee %s" r_script_fn r_log_fn
+    else
+      sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
+  if debug then Log.debug "%s" cmd;
+  if Sys.command cmd <> 0 then
+    failwith ("DNNR.train: R failure: " ^ cmd);
+  if not debug then
+    List.iter Sys.remove [r_script_fn; r_log_fn];
+  r_model_fn
+
 let predict debug trained_model_fn test_data_csv_fn =
   let r_script_fn = Filename.temp_file "odnnr_predict_" ".r" in
   let out_preds_fn = Filename.temp_file "odnnr_preds_" ".txt" in
@@ -171,7 +268,7 @@ let predict debug trained_model_fn test_data_csv_fn =
       fprintf out
         "library(keras, quietly = TRUE)\n\
          test_fn = '%s'\n\
-         load('%s') # NS <- mean, std and serialized\n\
+         load('%s') # NS<-(mean, std, serialized, ...)\n\
          model <- unserialize_model(serialized)\n\
          test_set <- as.matrix(read.table(test_fn, colClasses = 'numeric',\n\
                                           header = TRUE))\n\
