@@ -64,7 +64,7 @@ let train_test verbose no_plot
      Gnuplot.regr_plot title actual preds
   );
   let arch_str = DNNR.string_of_layers hidden_layers in
-  Log.info "%s R2_te: %.3f" arch_str test_R2;
+  Log.info "%s %d R2_te: %.3f" arch_str nb_epochs test_R2;
   test_R2
 
 let early_stop verbose optimizer loss hidden_layers
@@ -98,13 +98,14 @@ let early_stop verbose optimizer loss hidden_layers
         let curr_R2 =
           let preds = DNNR.predict verbose model_fn test_fn in
           Cpm.RegrStats.r2 actual preds in
-        Log.info "%s %d R2_te: %.3f" arch_str curr_epochs curr_R2;
         if curr_R2 > best_R2 then
-          loop curr_R2 curr_epochs (curr_epochs + delta_epochs) 0
+          (Log.info "%s %d R2_te: %.3f" arch_str curr_epochs curr_R2;
+           loop curr_R2 curr_epochs (curr_epochs + delta_epochs) 0)
         else (* curr_R2 <= best_R2 *)
-          loop best_R2 best_epochs (curr_epochs + delta_epochs) (nb_fails + 1)
+          (Log.warn "%s %d R2_te: %.3f" arch_str curr_epochs curr_R2;
+           loop best_R2 best_epochs (curr_epochs + delta_epochs) (nb_fails + 1))
       end in
-  loop init_R2 delta_epochs delta_epochs 0
+  loop init_R2 delta_epochs (2*delta_epochs) 0
 
 let main () =
   Log.(set_log_level DEBUG);
@@ -186,7 +187,7 @@ let main () =
             ) train_test_fns in
         let r2_avg = Utls.favg r2s in
         let arch_str = DNNR.string_of_layers hidden_layers in
-        Log.info "%s avg(R2_te): %.3f" arch_str r2_avg
+        Log.info "%s %d avg(R2_te): %.3f" arch_str nb_epochs r2_avg
       end
     else
       begin
