@@ -239,3 +239,14 @@ let fst3 (a, _, _) =
 let favg = function
   | [] -> 0.0 (* protect against empty list *)
   | xs -> L.favg xs
+
+let string_of_list ?pre:(pre = "[") ?sep:(sep = ";") ?suf:(suf = "]")
+    to_str l =
+  let buff = Buffer.create 80 in
+  Buffer.add_string buff pre;
+  L.iteri (fun i x ->
+      if i > 0 then Buffer.add_string buff sep;
+      Buffer.add_string buff (to_str x)
+    ) l;
+  Buffer.add_string buff suf;
+  Buffer.contents buff
