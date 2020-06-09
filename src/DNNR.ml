@@ -203,8 +203,8 @@ let early_stop_init
                          verbose = 1)\n\
          \n\
          serialized <- serialize_model(model)\n\
-         save(list = c('mean', 'std', 'serialized', 'train_data',\n\
-                       'train_targets'), file = '%s')\n\
+         save(list = c('mean','std','serialized','train_data','train_targets'),\
+              file = '%s')\n\
          quit()\n"
         train_data_csv_fn
         (r_string_of_layers nb_cols hidden_layers)
@@ -239,8 +239,8 @@ let early_stop_continue debug delta_epochs r_model_fn =
          model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = 1,\n\
                          verbose = 1)\n\
          serialized <- serialize_model(model)\n\
-         save(list = c('mean, 'std', 'train_data', 'train_targets',\n\
-                       'serialized'), file = '%s')\n\
+         save(list = c('mean','std','serialized','train_data','train_targets'),\
+         file = '%s')\n\
          quit()\n"
         r_model_fn
         delta_epochs
