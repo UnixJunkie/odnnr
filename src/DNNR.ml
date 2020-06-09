@@ -1,4 +1,5 @@
 
+module Fn = Filename
 module L = BatList
 module Log = Dolog.Log
 module S = BatString
@@ -103,8 +104,8 @@ let string_of_layers = function
 
 let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
   (* create R script and store it in a temp file *)
-  let r_script_fn = Filename.temp_file "odnnr_train_" ".r" in
-  let r_model_fn = Filename.temp_file "odnnr_model_" ".bin" in
+  let r_script_fn = Fn.temp_file "odnnr_train_" ".r" in
+  let r_model_fn = Fn.temp_file "odnnr_model_" ".bin" in
   let nb_cols =
     let csv_header = Utls.first_line train_data_csv_fn in
     BatString.count_char csv_header ' ' in
@@ -149,7 +150,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
         epochs
         r_model_fn
     );
-  let r_log_fn = Filename.temp_file "odnnr_train_" ".log" in
+  let r_log_fn = Fn.temp_file "odnnr_train_" ".log" in
   (* execute it *)
   let cmd =
     if debug then
@@ -167,7 +168,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
 let early_stop_init
     debug opt loss metric hidden_layers delta_epochs train_data_csv_fn r_model_fn =
   (* create R script and store it in a temp file *)
-  let r_script_fn = Filename.temp_file "odnnr_estopi_" ".r" in
+  let r_script_fn = Fn.temp_file "odnnr_estopi_" ".r" in
   let nb_cols =
     let csv_header = Utls.first_line train_data_csv_fn in
     BatString.count_char csv_header ' ' in
@@ -213,7 +214,7 @@ let early_stop_init
         delta_epochs
         r_model_fn
     );
-  let r_log_fn = Filename.temp_file "odnnr_estopi_" ".log" in
+  let r_log_fn = Fn.temp_file "odnnr_estopi_" ".log" in
   (* execute it *)
   let cmd =
     if debug then
@@ -230,7 +231,7 @@ let early_stop_init
 (* continue training an early stop model *)
 let early_stop_continue debug delta_epochs r_model_fn =
   (* create R script and store it in a temp file *)
-  let r_script_fn = Filename.temp_file "odnnr_estopc_" ".r" in
+  let r_script_fn = Fn.temp_file "odnnr_estopc_" ".r" in
   Utls.with_out_file r_script_fn (fun out ->
       fprintf out
         "library(keras, quietly = TRUE)\n\
@@ -246,7 +247,7 @@ let early_stop_continue debug delta_epochs r_model_fn =
         delta_epochs
         r_model_fn
     );
-  let r_log_fn = Filename.temp_file "odnnr_estopc_" ".log" in
+  let r_log_fn = Fn.temp_file "odnnr_estopc_" ".log" in
   (* execute it *)
   let cmd =
     if debug then
@@ -261,8 +262,8 @@ let early_stop_continue debug delta_epochs r_model_fn =
   r_model_fn
 
 let predict debug trained_model_fn test_data_csv_fn =
-  let r_script_fn = Filename.temp_file "odnnr_predict_" ".r" in
-  let out_preds_fn = Filename.temp_file "odnnr_preds_" ".txt" in
+  let r_script_fn = Fn.temp_file "odnnr_predict_" ".r" in
+  let out_preds_fn = Fn.temp_file "odnnr_preds_" ".txt" in
   (* create R script and store it in a temp file *)
   Utls.with_out_file r_script_fn (fun out ->
       fprintf out
@@ -283,7 +284,7 @@ let predict debug trained_model_fn test_data_csv_fn =
         trained_model_fn
         out_preds_fn
     );
-  let r_log_fn = Filename.temp_file "odnnr_train_" ".log" in
+  let r_log_fn = Fn.temp_file "odnnr_train_" ".log" in
   (* execute it *)
   let cmd = 
     sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
