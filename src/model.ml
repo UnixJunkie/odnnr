@@ -63,7 +63,8 @@ let train_test verbose no_plot
      let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
      Gnuplot.regr_plot title actual preds
   );
-  Log.info "testR2: %.3f" test_R2;
+  let arch_str = DNNR.string_of_layers hidden_layers in
+  Log.info "%s R2_te: %.3f" arch_str test_R2;
   test_R2
 
 let main () =
@@ -99,8 +100,8 @@ let main () =
       exit 1
     end;
   let verbose = CLI.get_set_bool ["-v"] args in
-  let ncores = CLI.get_int_def ["-np"] args 1 in
-  let seed = match CLI.get_int_opt ["--seed"] args with
+  let ncores = CLI.get_int_def ["-np";"--nprocs"] args 1 in
+  let seed = match CLI.get_int_opt ["-s";"--seed"] args with
     | Some s -> s (* reproducible *)
     | None -> (* random *)
       let () = Random.self_init () in
@@ -120,9 +121,8 @@ let main () =
   let activation =
     let activation_str = CLI.get_string_def ["--active"] args "relu" in
     DNNR.activation_of_string activation_str in
-  let hidden_layers =
-    let arch_str = CLI.get_string_def ["--arch"] args "64/64" in
-    DNNR.layers_of_string activation arch_str in
+  let arch_str = CLI.get_string_def ["--arch"] args "64/64" in
+  let hidden_layers = DNNR.layers_of_string activation arch_str in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (None, None) -> failwith "provide --train and/or --test"
@@ -137,12 +137,15 @@ let main () =
         Log.info "shuffle -> %dxCV" nfolds;
         let train_test_fns = shuffle_then_nfolds seed nfolds train_fn' in
         let r2s =
-          Parmap.parmap ncores (fun (train_fn, test_fn) ->
+          (* we core pin so that the R processes should be confined
+             to a single core *)
+          Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
               train_test verbose no_plot
                 optimizer loss hidden_layers nb_epochs train_fn test_fn
             ) train_test_fns in
         let r2_avg = Utls.favg r2s in
-        Log.info "avg testR2: %.3f" r2_avg
+        let arch_str = DNNR.string_of_layers hidden_layers in
+        Log.info "%s avg(R2_te): %.3f" arch_str r2_avg
       end
     else
       begin
