@@ -92,8 +92,14 @@ let string_of_layers = function
     Utls.enforce ([activ_fun] = L.sort_uniq compare (L.map snd xs))
       "DNNR.string_of_layers: diverse activation functions";
     let sizes = size :: (L.map fst xs) in
-    sprintf "%s%s" activ_str
-      (Utls.string_of_list ~pre:"(" ~sep:"/" ~suf:")" string_of_int sizes)
+    match L.sort_uniq compare sizes with
+    | [] -> assert(false)
+    | [sz] ->
+      let n = L.length sizes in
+      sprintf "%s(%d^%d)" activ_str sz n
+    | _ ->
+      sprintf "%s%s" activ_str
+        (Utls.string_of_list ~pre:"(" ~sep:"/" ~suf:")" string_of_int sizes)
 
 let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
   (* create R script and store it in a temp file *)
