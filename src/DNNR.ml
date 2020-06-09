@@ -84,6 +84,17 @@ let layers_of_string activation s =
       (int_of_string int_str, activation)
     ) int_strings
 
+(* short textual description of the network architecture (hidden layers only) *)
+let string_of_layers = function
+  | [] -> assert(false)
+  | (size, activ_fun) :: xs ->
+    let activ_str = string_of_activation activ_fun in
+    Utls.enforce ([activ_fun] = L.sort_uniq compare (L.map snd xs))
+      "DNNR.string_of_layers: diverse activation functions";
+    let sizes = size :: (L.map fst xs) in
+    sprintf "%s%s" activ_str
+      (Utls.string_of_list ~pre:"(" ~sep:"/" ~suf:")" string_of_int sizes)
+
 let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Filename.temp_file "odnnr_train_" ".r" in
