@@ -225,8 +225,7 @@ let early_stop_init
   if Sys.command cmd <> 0 then
     failwith ("DNNR.train: R failure: " ^ cmd);
   if not debug then
-    List.iter Sys.remove [r_script_fn; r_log_fn];
-  r_model_fn
+    List.iter Sys.remove [r_script_fn; r_log_fn]
 
 (* continue training an early stop model *)
 let early_stop_continue debug delta_epochs r_model_fn =
@@ -258,8 +257,7 @@ let early_stop_continue debug delta_epochs r_model_fn =
   if Sys.command cmd <> 0 then
     failwith ("DNNR.train: R failure: " ^ cmd);
   if not debug then
-    List.iter Sys.remove [r_script_fn; r_log_fn];
-  r_model_fn
+    List.iter Sys.remove [r_script_fn; r_log_fn]
 
 let predict debug trained_model_fn test_data_csv_fn =
   let r_script_fn = Fn.temp_file "odnnr_predict_" ".r" in
