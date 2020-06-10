@@ -107,6 +107,12 @@ let early_stop verbose optimizer loss hidden_layers
       end in
   loop init_R2 delta_epochs (2*delta_epochs) 0
 
+type mode = Load of string
+          | Save of string
+          | Discard
+
+(* FBR: -s,-l and -o are not supported *)
+
 let main () =
   Log.(set_log_level DEBUG);
   Log.color_on ();
@@ -142,8 +148,8 @@ let main () =
     end;
   let verbose = CLI.get_set_bool ["-v"] args in
   let epochs_scan = CLI.get_set_bool ["--early-stop"] args in
-  let ncores = CLI.get_int_def ["-np";"--nprocs"] args 1 in
-  let seed = match CLI.get_int_opt ["-s";"--seed"] args with
+  let ncores = CLI.get_int_def ["-np"] args 1 in
+  let seed = match CLI.get_int_opt ["--seed"] args with
     | Some s -> s (* reproducible *)
     | None -> (* random *)
       let () = Random.self_init () in
@@ -165,6 +171,12 @@ let main () =
     DNNR.activation_of_string activation_str in
   let arch_str = CLI.get_string_def ["--arch"] args "64/64" in
   let hidden_layers = DNNR.layers_of_string activation arch_str in
+  let _save_or_load = match (CLI.get_string_opt ["-l"] args,
+                             CLI.get_string_opt ["-s"] args) with
+  | (Some fn, None) -> Load fn
+  | (None, Some fn) -> Save fn
+  | (None, None) -> Discard
+  | (Some _, Some _) -> failwith "Model: both -l and -s" in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (None, None) -> failwith "provide --train and/or --test"
@@ -174,23 +186,41 @@ let main () =
              optimizer loss hidden_layers nb_epochs train_fn test_fn)
   | (Some train_fn', None) ->
     if nfolds > 1 then
-      begin
-        (* NxCV *)
+      begin (* cross validation *)
         Log.info "shuffle -> %dxCV" nfolds;
         let train_test_fns = shuffle_then_nfolds seed nfolds train_fn' in
-        let r2s =
-          (* we core pin so that the R processes should be confined
-             to a single core *)
-          Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
-              train_test verbose no_plot
-                optimizer loss hidden_layers nb_epochs train_fn test_fn
-            ) train_test_fns in
-        let r2_avg = Utls.favg r2s in
-        let arch_str = DNNR.string_of_layers hidden_layers in
-        Log.info "%s %d avg(R2_te): %.3f" arch_str nb_epochs r2_avg
+        if epochs_scan then
+          (* we only train w/ early stopping the first fold *)
+          match train_test_fns with
+          | [] -> assert(false)
+          | (train, test) :: others ->
+            let _model_fn, best_R2, best_epochs =
+              early_stop verbose optimizer loss hidden_layers
+                nb_epochs 1 5 train test in
+            Log.info "best_R2: %.3f epochs: %d" best_R2 best_epochs;
+            let r2s =
+              (* core pin so that each R process is confined to one core *)
+              Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
+                  (* all other folds will use the same number of epochs *)
+                  train_test verbose no_plot
+                    optimizer loss hidden_layers best_epochs train_fn test_fn
+                ) others in
+            let r2_avg = Utls.favg (best_R2 :: r2s) in
+            let arch_str = DNNR.string_of_layers hidden_layers in
+            Log.info "%s %d avg(R2_te): %.3f" arch_str best_epochs r2_avg
+        else
+          let r2s =
+            (* core pin so that each R process is confined to one core *)
+            Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
+                train_test verbose no_plot
+                  optimizer loss hidden_layers nb_epochs train_fn test_fn
+              ) train_test_fns in
+          let r2_avg = Utls.favg r2s in
+          let arch_str = DNNR.string_of_layers hidden_layers in
+          Log.info "%s %d avg(R2_te): %.3f" arch_str nb_epochs r2_avg
       end
     else
-      begin
+      begin (* no cross validation *)
         (* train/test split *)
         Log.info "shuffle -> train/test split (p=%.2f)" train_portion;
         let train_fn, test_fn = shuffle_then_cut seed train_portion train_fn' in
