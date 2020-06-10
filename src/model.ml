@@ -44,18 +44,31 @@ let shuffle_then_nfolds seed n train_fn =
     let train_tests = Utls.cv_folds n rand_lines in
     L.rev_map (fun (x, y) -> train_test_dump csv_header x y) train_tests
 
-let train_test verbose no_plot
+(* what to do with the trained model *)
+type mode = Load of string
+          | Save of string
+          | Discard
+
+let train verbose save_or_load optimizer loss hidden_layers nb_epochs train_fn =
+  match save_or_load with
+  | Load trained_model_fn ->
+    (Log.info "loading model from %s" trained_model_fn;
+     trained_model_fn)
+  | _ ->
+    let model_fn = match save_or_load with
+      | Load _ -> assert(false)
+      | Save fn -> fn
+      | Discard -> Fn.temp_file "odnnr_model_" ".bin" in
+    DNNR.train verbose
+      optimizer loss loss hidden_layers nb_epochs train_fn model_fn;
+    Log.info "saving model to %s" model_fn;
+    model_fn
+
+let train_test verbose save_or_load no_plot
     optimizer loss hidden_layers nb_epochs train_fn test_fn =
   let model_fn =
-    DNNR.(train verbose
-            optimizer
-            loss (* loss *)
-            loss (* metric *)
-            hidden_layers
-            nb_epochs
-            train_fn
-         ) in
-  Log.info "trained_model: %s" model_fn;
+    train verbose
+      save_or_load optimizer loss hidden_layers nb_epochs train_fn in
   let actual = extract_values verbose test_fn in
   let preds = DNNR.predict verbose model_fn test_fn in
   let test_R2 = Cpm.RegrStats.r2 actual preds in
@@ -106,10 +119,6 @@ let early_stop verbose optimizer loss hidden_layers
            loop best_R2 best_epochs (curr_epochs + delta_epochs) (nb_fails + 1))
       end in
   loop init_R2 delta_epochs (2*delta_epochs) 0
-
-type mode = Load of string
-          | Save of string
-          | Discard
 
 (* FBR: -s,-l and -o are not supported *)
 
@@ -171,18 +180,18 @@ let main () =
     DNNR.activation_of_string activation_str in
   let arch_str = CLI.get_string_def ["--arch"] args "64/64" in
   let hidden_layers = DNNR.layers_of_string activation arch_str in
-  let _save_or_load = match (CLI.get_string_opt ["-l"] args,
-                             CLI.get_string_opt ["-s"] args) with
-  | (Some fn, None) -> Load fn
-  | (None, Some fn) -> Save fn
-  | (None, None) -> Discard
-  | (Some _, Some _) -> failwith "Model: both -l and -s" in
+  let save_or_load =
+    match (CLI.get_string_opt ["-l"] args, CLI.get_string_opt ["-s"] args) with
+    | (Some fn, None) -> Load fn
+    | (None, Some fn) -> Save fn
+    | (None, None) -> Discard
+    | (Some _, Some _) -> failwith "Model: both -l and -s" in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (None, None) -> failwith "provide --train and/or --test"
   | (None, Some _test) -> failwith "only --test: not implemented yet"
   | (Some train_fn, Some test_fn) ->
-    ignore(train_test verbose no_plot
+    ignore(train_test verbose save_or_load no_plot
              optimizer loss hidden_layers nb_epochs train_fn test_fn)
   | (Some train_fn', None) ->
     if nfolds > 1 then
@@ -202,7 +211,7 @@ let main () =
               (* core pin so that each R process is confined to one core *)
               Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
                   (* all other folds will use the same number of epochs *)
-                  train_test verbose no_plot
+                  train_test verbose save_or_load no_plot
                     optimizer loss hidden_layers best_epochs train_fn test_fn
                 ) others in
             let r2_avg = Utls.favg (best_R2 :: r2s) in
@@ -212,7 +221,7 @@ let main () =
           let r2s =
             (* core pin so that each R process is confined to one core *)
             Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
-                train_test verbose no_plot
+                train_test verbose save_or_load no_plot
                   optimizer loss hidden_layers nb_epochs train_fn test_fn
               ) train_test_fns in
           let r2_avg = Utls.favg r2s in
@@ -231,7 +240,7 @@ let main () =
           Log.info "model_fn: %s best_R2: %.3f epochs: %d"
             model_fn best_R2 best_epochs
         else
-          ignore(train_test verbose no_plot
+          ignore(train_test verbose save_or_load no_plot
                    optimizer loss hidden_layers nb_epochs train_fn test_fn)
       end
 
