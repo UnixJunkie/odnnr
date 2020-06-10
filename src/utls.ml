@@ -100,6 +100,11 @@ let float_list_of_file fn =
       ) [] in
   L.rev res
 
+let float_list_to_file fn l =
+  with_out_file fn (fun out ->
+      L.iter (fprintf out "%f\n") l
+    )
+
 (* measure time spent in f (seconds) *)
 let wall_clock_time f =
   let start = Unix.gettimeofday () in
