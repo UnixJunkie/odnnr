@@ -273,8 +273,8 @@ let predict debug trained_model_fn test_data_csv_fn =
          test_data <- test_set[, 2:cols_count]\n\
          test_data <- scale(test_data, center = mean, scale = std)\n\
          values <- model %%>%% predict(test_data)\n\
-         write.table(values, file = '%s', sep = '\n',\n\
-                     row.names = F, col.names = F)\n\
+         write.table(values, file = '%s', sep = '\\n', row.names = F,\n\
+                     col.names = F)\n\
          quit()\n"
         test_data_csv_fn
         trained_model_fn
