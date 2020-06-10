@@ -49,6 +49,11 @@ type mode = Load of string
           | Save of string
           | Discard
 
+let trained_model_fn_from_mode = function
+  | Discard -> failwith "Model.trained_model_fn_from_mode: discard"
+  | Save _ -> failwith "Model.trained_model_fn_from_mode: save"
+  | Load fn -> fn
+
 let train verbose save_or_load optimizer loss hidden_layers nb_epochs train_fn =
   match save_or_load with
   | Load trained_model_fn ->
@@ -123,8 +128,6 @@ let early_stop verbose optimizer loss hidden_layers
       end in
   loop init_R2 delta_epochs (2*delta_epochs) 0
 
-(* FBR: -o not supported *)
-
 let main () =
   Log.(set_log_level DEBUG);
   Log.color_on ();
@@ -182,6 +185,9 @@ let main () =
     let activation_str = CLI.get_string_def ["--active"] args "relu" in
     DNNR.activation_of_string activation_str in
   let arch_str = CLI.get_string_def ["--arch"] args "64/64" in
+  let scores_fn = match CLI.get_string_opt ["-o"] args with
+    | None -> Fn.temp_file "odnnr_preds_" ".txt"
+    | Some fn -> fn in
   let hidden_layers = DNNR.layers_of_string activation arch_str in
   let save_or_load =
     match (CLI.get_string_opt ["-l"] args, CLI.get_string_opt ["-s"] args) with
@@ -192,7 +198,11 @@ let main () =
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (None, None) -> failwith "provide --train and/or --test"
-  | (None, Some _test) -> failwith "only --test: not implemented yet"
+  | (None, Some test_fn) ->
+    (* trained model production use *)
+    let model_fn = trained_model_fn_from_mode save_or_load in
+    let preds = test verbose model_fn test_fn in
+    Utls.float_list_to_file scores_fn preds
   | (Some train_fn, Some test_fn) ->
     ignore(train_test verbose save_or_load no_plot
              optimizer loss hidden_layers nb_epochs train_fn test_fn)
