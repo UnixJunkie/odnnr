@@ -64,13 +64,16 @@ let train verbose save_or_load optimizer loss hidden_layers nb_epochs train_fn =
     Log.info "saving model to %s" model_fn;
     model_fn
 
+let test verbose model_fn test_fn =
+  DNNR.predict verbose model_fn test_fn
+
 let train_test verbose save_or_load no_plot
     optimizer loss hidden_layers nb_epochs train_fn test_fn =
   let model_fn =
     train verbose
       save_or_load optimizer loss hidden_layers nb_epochs train_fn in
   let actual = extract_values verbose test_fn in
-  let preds = DNNR.predict verbose model_fn test_fn in
+  let preds = test verbose model_fn test_fn in
   let test_R2 = Cpm.RegrStats.r2 actual preds in
   (if not no_plot then
      let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
@@ -120,7 +123,7 @@ let early_stop verbose optimizer loss hidden_layers
       end in
   loop init_R2 delta_epochs (2*delta_epochs) 0
 
-(* FBR: -s,-l and -o are not supported *)
+(* FBR: -o not supported *)
 
 let main () =
   Log.(set_log_level DEBUG);
@@ -140,8 +143,8 @@ let main () =
                [-np <int>]: max CPU cores\n  \
                [--early-stop]: early stopping epochs scan\n  \
                [--NxCV <int>]: number of folds of cross validation\n  \
-               [-s|--save <filename>]: save model to file\n  \
-               [-l|--load <filename>]: restore model from file\n  \
+               [-s <filename>]: save trained model to file\n  \
+               [-l <filename>]: restore trained model from file\n  \
                [--loss {RMSE|MSE|MAE}]: minimized loss and perf. metric\n  \
                (default=RMSE)\n  \
                [--optim {SGD|RMS|Ada|AdaD|AdaG|AdaM|Nada|Ftrl}]: optimizer\n  \
