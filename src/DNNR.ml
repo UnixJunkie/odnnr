@@ -100,10 +100,10 @@ let string_of_layers l = match l with
       sprintf "%s%s" activ_str
         (Utls.string_of_list ~pre:"(" ~sep:"/" ~suf:")" string_of_int sizes)
 
-let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
+let train debug opt loss metric hidden_layers epochs train_data_csv_fn
+    r_model_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Fn.temp_file "odnnr_train_" ".r" in
-  let r_model_fn = Fn.temp_file "odnnr_model_" ".bin" in
   let nb_cols =
     let csv_header = Utls.first_line train_data_csv_fn in
     BatString.count_char csv_header ' ' in
@@ -159,8 +159,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn =
   if Sys.command cmd <> 0 then
     failwith ("DNNR.train: R failure: " ^ cmd);
   if not debug then
-    List.iter Sys.remove [r_script_fn; r_log_fn];
-  r_model_fn
+    List.iter Sys.remove [r_script_fn; r_log_fn]
 
 (* create a model for early stopping training *)
 let early_stop_init
