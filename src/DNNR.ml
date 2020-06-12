@@ -100,7 +100,7 @@ let string_of_layers l = match l with
       sprintf "%s%s" activ_str
         (Utls.string_of_list ~pre:"(" ~sep:"/" ~suf:")" string_of_int sizes)
 
-let train debug opt loss metric hidden_layers epochs train_data_csv_fn
+let train debug opt loss metric hidden_layers epochs batch_size train_data_csv_fn
     r_model_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Fn.temp_file "odnnr_train_" ".r" in
@@ -134,7 +134,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn
          \n\
          model <- build_model()\n\
          \n\
-         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = 1,\n\
+         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = %d,\n\
                          verbose = 1)\n\
          \n\
          serialized <- serialize_model(model)\n\
@@ -146,6 +146,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn
         (string_of_metric loss)
         (string_of_metric metric)
         epochs
+        batch_size
         r_model_fn
     );
   let r_log_fn = Fn.temp_file "odnnr_train_" ".log" in
@@ -163,7 +164,7 @@ let train debug opt loss metric hidden_layers epochs train_data_csv_fn
 
 (* create a model for early stopping training *)
 let early_stop_init
-    debug opt loss metric hidden_layers delta_epochs train_data_csv_fn r_model_fn =
+    debug opt loss metric hidden_layers delta_epochs batch_size train_data_csv_fn r_model_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Fn.temp_file "odnnr_estopi_" ".r" in
   let nb_cols =
@@ -196,7 +197,7 @@ let early_stop_init
          \n\
          model <- build_model()\n\
          \n\
-         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = 1,\n\
+         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = %d,\n\
                          verbose = 1)\n\
          \n\
          serialized <- serialize_model(model)\n\
@@ -209,6 +210,7 @@ let early_stop_init
         (string_of_metric loss)
         (string_of_metric metric)
         delta_epochs
+        batch_size
         r_model_fn
     );
   let r_log_fn = Fn.temp_file "odnnr_estopi_" ".log" in
@@ -225,7 +227,7 @@ let early_stop_init
     List.iter Sys.remove [r_script_fn; r_log_fn]
 
 (* continue training an early stop model *)
-let early_stop_continue debug delta_epochs r_model_fn =
+let early_stop_continue debug delta_epochs batch_size r_model_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Fn.temp_file "odnnr_estopc_" ".r" in
   Utls.with_out_file r_script_fn (fun out ->
@@ -233,7 +235,7 @@ let early_stop_continue debug delta_epochs r_model_fn =
         "library(keras, quietly = TRUE)\n\
          load('%s') # NS<-(mean, std, train_data, train_targets, serialized)\n\
          model <- unserialize_model(serialized)\n\
-         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = 1,\n\
+         model %%>%% fit(train_data, train_targets, epochs = %d, batch_size = %d,\n\
                          verbose = 1)\n\
          serialized <- serialize_model(model)\n\
          save(list = c('mean','std','serialized','train_data','train_targets'),\
@@ -241,6 +243,7 @@ let early_stop_continue debug delta_epochs r_model_fn =
          quit()\n"
         r_model_fn
         delta_epochs
+        batch_size
         r_model_fn
     );
   let r_log_fn = Fn.temp_file "odnnr_estopc_" ".log" in
