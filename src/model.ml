@@ -54,7 +54,7 @@ let trained_model_fn_from_mode = function
   | Save _ -> failwith "Model.trained_model_fn_from_mode: save"
   | Load fn -> fn
 
-let train verbose save_or_load optimizer loss hidden_layers nb_epochs train_fn =
+let train verbose save_or_load optimizer loss hidden_layers epochs batch train_fn =
   match save_or_load with
   | Load trained_model_fn ->
     (Log.info "loading model from %s" trained_model_fn;
@@ -65,7 +65,7 @@ let train verbose save_or_load optimizer loss hidden_layers nb_epochs train_fn =
       | Save fn -> fn
       | Discard -> Fn.temp_file "odnnr_model_" ".bin" in
     DNNR.train verbose
-      optimizer loss loss hidden_layers nb_epochs train_fn model_fn;
+      optimizer loss loss hidden_layers epochs batch train_fn model_fn;
     Log.info "saving model to %s" model_fn;
     model_fn
 
@@ -73,10 +73,10 @@ let test verbose model_fn test_fn =
   DNNR.predict verbose model_fn test_fn
 
 let train_test verbose save_or_load no_plot
-    optimizer loss hidden_layers nb_epochs train_fn test_fn =
+    optimizer loss hidden_layers epochs batch train_fn test_fn =
   let model_fn =
     train verbose
-      save_or_load optimizer loss hidden_layers nb_epochs train_fn in
+      save_or_load optimizer loss hidden_layers epochs batch train_fn in
   let actual = extract_values verbose test_fn in
   let preds = test verbose model_fn test_fn in
   let test_R2 = Cpm.RegrStats.r2 actual preds in
@@ -85,11 +85,11 @@ let train_test verbose save_or_load no_plot
      Gnuplot.regr_plot title actual preds
   );
   let arch_str = DNNR.string_of_layers hidden_layers in
-  Log.info "%s %d R2_te: %.3f" arch_str nb_epochs test_R2;
+  Log.info "%s %d R2_te: %.3f" arch_str epochs test_R2;
   test_R2
 
 let early_stop verbose optimizer loss hidden_layers
-    max_epochs delta_epochs patience train_fn test_fn =
+    max_epochs delta_epochs batch patience train_fn test_fn =
   let actual = extract_values verbose test_fn in
   let arch_str = DNNR.string_of_layers hidden_layers in
   let model_fn = Fn.temp_file "odnnr_model_" ".bin" in
@@ -100,6 +100,7 @@ let early_stop verbose optimizer loss hidden_layers
      loss
      hidden_layers
      delta_epochs
+     batch
      train_fn
      model_fn);
   let init_R2 =
@@ -115,7 +116,7 @@ let early_stop verbose optimizer loss hidden_layers
        (model_fn, best_R2, best_epochs))
     else
       begin
-        DNNR.early_stop_continue verbose delta_epochs model_fn;
+        DNNR.early_stop_continue verbose delta_epochs batch model_fn;
         let curr_R2 =
           let preds = DNNR.predict verbose model_fn test_fn in
           Cpm.RegrStats.r2 actual preds in
@@ -139,6 +140,7 @@ let main () =
       eprintf "usage:\n\
                %s\n  \
                [--train <train.txt>]: training set\n  \
+               [-b <int>]: training batch size (default = 32)\n\
                [-p <float>]: train portion; default=%f\n  \
                [--seed <int>]: RNG seed\n  \
                [--test <test.txt>]: test set\n  \
@@ -195,6 +197,7 @@ let main () =
     | (None, Some fn) -> Save fn
     | (None, None) -> Discard
     | (Some _, Some _) -> failwith "Model: both -l and -s" in
+  let batch = CLI.get_int_def ["-b"] args 32 in
   CLI.finalize ();
   match maybe_train_fn, maybe_test_fn with
   | (None, None) -> failwith "provide --train and/or --test"
@@ -205,7 +208,7 @@ let main () =
     Utls.float_list_to_file scores_fn preds
   | (Some train_fn, Some test_fn) ->
     ignore(train_test verbose save_or_load no_plot
-             optimizer loss hidden_layers nb_epochs train_fn test_fn)
+             optimizer loss hidden_layers nb_epochs batch train_fn test_fn)
   | (Some train_fn', None) ->
     if nfolds > 1 then
       begin (* cross validation *)
@@ -218,14 +221,14 @@ let main () =
           | (train, test) :: others ->
             let _model_fn, best_R2, best_epochs =
               early_stop verbose optimizer loss hidden_layers
-                nb_epochs 1 5 train test in
+                nb_epochs batch 1 5 train test in
             Log.info "best_R2: %.3f epochs: %d" best_R2 best_epochs;
             let r2s =
               (* core pin so that each R process is confined to one core *)
               Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
                   (* all other folds will use the same number of epochs *)
                   train_test verbose save_or_load no_plot
-                    optimizer loss hidden_layers best_epochs train_fn test_fn
+                    optimizer loss hidden_layers best_epochs batch train_fn test_fn
                 ) others in
             let r2_avg = Utls.favg (best_R2 :: r2s) in
             let arch_str = DNNR.string_of_layers hidden_layers in
@@ -235,7 +238,7 @@ let main () =
             (* core pin so that each R process is confined to one core *)
             Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
                 train_test verbose save_or_load no_plot
-                  optimizer loss hidden_layers nb_epochs train_fn test_fn
+                  optimizer loss hidden_layers nb_epochs batch train_fn test_fn
               ) train_test_fns in
           let r2_avg = Utls.favg r2s in
           let arch_str = DNNR.string_of_layers hidden_layers in
@@ -249,12 +252,12 @@ let main () =
         if epochs_scan then
           let model_fn, best_R2, best_epochs =
             early_stop verbose optimizer loss hidden_layers
-              nb_epochs 1 5 train_fn test_fn in
+              nb_epochs batch 1 5 train_fn test_fn in
           Log.info "model_fn: %s best_R2: %.3f epochs: %d"
             model_fn best_R2 best_epochs
         else
           ignore(train_test verbose save_or_load no_plot
-                   optimizer loss hidden_layers nb_epochs train_fn test_fn)
+                   optimizer loss hidden_layers nb_epochs batch train_fn test_fn)
       end
 
 let () = main ()
