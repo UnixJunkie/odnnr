@@ -180,8 +180,7 @@ let train debug config train_data_csv_fn r_model_fn =
     List.iter Sys.remove [r_script_fn; r_log_fn]
 
 (* create a model for early stopping training *)
-let early_stop_init
-    debug opt loss metric hidden_layers delta_epochs batch_size train_data_csv_fn r_model_fn =
+let early_stop_init debug config train_data_csv_fn r_model_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Fn.temp_file "odnnr_estopi_" ".r" in
   let nb_cols =
@@ -222,12 +221,12 @@ let early_stop_init
               file = '%s')\n\
          quit()\n"
         train_data_csv_fn
-        (r_string_of_layers nb_cols hidden_layers)
-        (string_of_optimizer opt)
-        (string_of_metric loss)
-        (string_of_metric metric)
-        delta_epochs
-        batch_size
+        (r_string_of_layers nb_cols config.hidden_layers)
+        (string_of_optimizer config.opt)
+        (string_of_metric config.train_loss)
+        (string_of_metric config.perf_metric)
+        config.delta_epochs
+        config.batch_size
         r_model_fn
     );
   let r_log_fn = Fn.temp_file "odnnr_estopi_" ".log" in
@@ -244,7 +243,7 @@ let early_stop_init
     List.iter Sys.remove [r_script_fn; r_log_fn]
 
 (* continue training an early stop model *)
-let early_stop_continue debug delta_epochs batch_size r_model_fn =
+let early_stop_continue debug config r_model_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Fn.temp_file "odnnr_estopc_" ".r" in
   Utls.with_out_file r_script_fn (fun out ->
@@ -259,8 +258,8 @@ let early_stop_continue debug delta_epochs batch_size r_model_fn =
          file = '%s')\n\
          quit()\n"
         r_model_fn
-        delta_epochs
-        batch_size
+        config.delta_epochs
+        config.batch_size
         r_model_fn
     );
   let r_log_fn = Fn.temp_file "odnnr_estopc_" ".log" in
