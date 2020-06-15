@@ -66,6 +66,24 @@ let activation_of_string = function
 
 type hidden_layer = int * active_fun
 
+type config = { opt: optimizer;
+                train_loss: metric;
+                perf_metric: metric;
+                hidden_layers: hidden_layer list;
+                max_epochs: int;
+                delta_epochs: int;
+                batch_size: int }
+
+let make_config ~opt ~train_loss ~perf_metric ~hidden_layers
+    ~max_epochs ~delta_epochs ~batch_size =
+  { opt;
+    train_loss;
+    perf_metric;
+    hidden_layers;
+    max_epochs;
+    delta_epochs; (* FBR: unused yet?! *)
+    batch_size }
+
 let r_string_of_layers nb_cols layers =
   let buff = Buffer.create 80 in
   L.iteri (fun i (units, activation) ->
@@ -100,8 +118,7 @@ let string_of_layers l = match l with
       sprintf "%s%s" activ_str
         (Utls.string_of_list ~pre:"(" ~sep:"/" ~suf:")" string_of_int sizes)
 
-let train debug opt loss metric hidden_layers epochs batch_size train_data_csv_fn
-    r_model_fn =
+let train debug config train_data_csv_fn r_model_fn =
   (* create R script and store it in a temp file *)
   let r_script_fn = Fn.temp_file "odnnr_train_" ".r" in
   let nb_cols =
@@ -141,12 +158,12 @@ let train debug opt loss metric hidden_layers epochs batch_size train_data_csv_f
          save(list = c('mean', 'std', 'serialized'), file = '%s')\n\
          quit()\n"
         train_data_csv_fn
-        (r_string_of_layers nb_cols hidden_layers)
-        (string_of_optimizer opt)
-        (string_of_metric loss)
-        (string_of_metric metric)
-        epochs
-        batch_size
+        (r_string_of_layers nb_cols config.hidden_layers)
+        (string_of_optimizer config.opt)
+        (string_of_metric config.train_loss)
+        (string_of_metric config.perf_metric)
+        config.max_epochs
+        config.batch_size
         r_model_fn
     );
   let r_log_fn = Fn.temp_file "odnnr_train_" ".log" in
@@ -284,7 +301,7 @@ let predict debug trained_model_fn test_data_csv_fn =
     );
   let r_log_fn = Fn.temp_file "odnnr_train_" ".log" in
   (* execute it *)
-  let cmd = 
+  let cmd =
     sprintf "(R --vanilla --slave < %s 2>&1) > %s" r_script_fn r_log_fn in
   if debug then Log.debug "%s" cmd;
   if Sys.command cmd <> 0 then
