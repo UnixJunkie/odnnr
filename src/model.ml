@@ -84,15 +84,16 @@ let train_test verbose save_or_load no_plot config train_fn test_fn =
   Log.info "%s %d R2_te: %.3f" arch_str config.max_epochs test_R2;
   test_R2
 
-let early_stop verbose config patience train_fn test_fn =
+let early_stop verbose config epochs_start patience train_fn test_fn =
   let actual = extract_values verbose test_fn in
   let arch_str = DNNR.(string_of_layers config.hidden_layers) in
   let model_fn = Fn.temp_file "odnnr_model_" ".bin" in
-  (DNNR.early_stop_init verbose config train_fn model_fn);
+  let config' = { config with delta_epochs = epochs_start } in
+  (DNNR.early_stop_init verbose config' train_fn model_fn);
   let init_R2 =
     let preds = DNNR.predict verbose model_fn test_fn in
     Cpm.RegrStats.r2 actual preds in
-  Log.info "%s %d R2_te: %.3f" arch_str config.delta_epochs init_R2;
+  Log.info "%s %d R2_te: %.3f" arch_str epochs_start init_R2;
   let rec loop best_R2 best_epochs curr_epochs nb_fails =
     if curr_epochs >= config.max_epochs then
       (Log.error "Model.early_stop: max epochs reached";
@@ -114,7 +115,7 @@ let early_stop verbose config patience train_fn test_fn =
            loop best_R2 best_epochs (curr_epochs + config.delta_epochs)
              (nb_fails + 1))
       end in
-  loop init_R2 config.delta_epochs (2 * config.delta_epochs) 0
+  loop init_R2 epochs_start (epochs_start + config.delta_epochs) 0
 
 let main () =
   Log.(set_log_level DEBUG);
@@ -137,6 +138,8 @@ let main () =
                [--NxCV <int>]: number of folds of cross validation\n  \
                [--patience <int>]: tolerated number of training epochs\n  \
                                    without improvement (default=5)\n  \
+               [--persevere <int>]: train to specified number of epochs then
+                                    early stop with delta_epochs=1\n  \
                [--delta <int>]: epochs delta upon training (default=10)\n  \
                [-s <filename>]: save trained model to file\n  \
                [-l <filename>]: restore trained model from file\n  \
@@ -167,6 +170,7 @@ let main () =
   let nb_epochs = CLI.get_int ["--epochs"] args in
   let nfolds = CLI.get_int_def ["--NxCV"] args 1 in
   let patience = CLI.get_int_def ["--patience"] args 5 in
+  let persevere = CLI.get_int_opt ["--persevere"] args in
   let delta = CLI.get_int_def ["--delta"] args 10 in
   let train_portion = CLI.get_float_def ["-p"] args 0.8 in
   let loss =
@@ -230,7 +234,8 @@ let main () =
           | [] -> assert(false)
           | (train, test) :: others ->
             let _model_fn, best_R2, best_epochs =
-              early_stop verbose config patience train test in
+              early_stop
+                verbose config config.delta_epochs patience train test in
             Log.info "best_R2: %.3f epochs: %d" best_R2 best_epochs;
             let r2s =
               (* FBR: BUG: we don't need compute an average
@@ -264,7 +269,14 @@ let main () =
           shuffle_then_cut seed train_portion train_fn' in
         if epochs_scan then
           let model_fn, best_R2, best_epochs =
-            early_stop verbose config patience train_fn test_fn in
+            match persevere with
+            | None ->
+              early_stop
+                verbose config config.delta_epochs patience train_fn test_fn
+            | Some known_best_epochs ->
+              let config' = { config with delta_epochs = 1 } in
+              early_stop
+                verbose config' known_best_epochs patience train_fn test_fn in
           Log.info "model_fn: %s best_R2: %.3f epochs: %d"
             model_fn best_R2 best_epochs
         else
