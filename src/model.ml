@@ -127,7 +127,7 @@ let main () =
       eprintf "usage:\n\
                %s\n  \
                [--train <train.txt>]: training set\n  \
-               [-b <int>]: training batch size (default = 32)\n\
+               [-b <int>]: training batch size (default = 32)\n  \
                [-p <float>]: train portion; default=%f\n  \
                [--seed <int>]: RNG seed\n  \
                [--test <test.txt>]: test set\n  \
@@ -137,6 +137,7 @@ let main () =
                [--NxCV <int>]: number of folds of cross validation\n  \
                [--patience <int>]: tolerated number of training epochs\n  \
                                    without improvement (default=5)\n  \
+               [--delta <int>]: epochs delta upon training (default=10)\n  \
                [-s <filename>]: save trained model to file\n  \
                [-l <filename>]: restore trained model from file\n  \
                [--loss {RMSE|MSE|MAE}]: minimized loss and perf. metric\n  \
@@ -166,6 +167,7 @@ let main () =
   let nb_epochs = CLI.get_int ["--epochs"] args in
   let nfolds = CLI.get_int_def ["--NxCV"] args 1 in
   let patience = CLI.get_int_def ["--patience"] args 5 in
+  let delta = CLI.get_int_def ["--delta"] args 10 in
   let train_portion = CLI.get_float_def ["-p"] args 0.8 in
   let loss =
     let loss_str = CLI.get_string_def ["--loss"] args "MSE" in
@@ -206,7 +208,7 @@ let main () =
       ~perf_metric:loss
       ~hidden_layers
       ~max_epochs:nb_epochs
-      ~delta_epochs:1
+      ~delta_epochs:delta
       ~batch_size:batch in
   match maybe_train_fn, maybe_test_fn with
   | (None, None) -> failwith "provide --train and/or --test"
