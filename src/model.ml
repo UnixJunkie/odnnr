@@ -84,27 +84,17 @@ let train_test verbose save_or_load no_plot config train_fn test_fn =
   Log.info "%s %d R2_te: %.3f" arch_str config.max_epochs test_R2;
   test_R2
 
-let early_stop verbose optimizer loss hidden_layers
-    max_epochs delta_epochs batch patience train_fn test_fn =
+let early_stop verbose config patience train_fn test_fn =
   let actual = extract_values verbose test_fn in
-  let arch_str = DNNR.string_of_layers hidden_layers in
+  let arch_str = DNNR.(string_of_layers config.hidden_layers) in
   let model_fn = Fn.temp_file "odnnr_model_" ".bin" in
-  (DNNR.early_stop_init
-     verbose
-     optimizer
-     loss
-     loss
-     hidden_layers
-     delta_epochs
-     batch
-     train_fn
-     model_fn);
+  (DNNR.early_stop_init verbose config train_fn model_fn);
   let init_R2 =
     let preds = DNNR.predict verbose model_fn test_fn in
     Cpm.RegrStats.r2 actual preds in
-  Log.info "%s %d R2_te: %.3f" arch_str delta_epochs init_R2;
+  Log.info "%s %d R2_te: %.3f" arch_str config.delta_epochs init_R2;
   let rec loop best_R2 best_epochs curr_epochs nb_fails =
-    if curr_epochs >= max_epochs then
+    if curr_epochs >= config.max_epochs then
       (Log.error "Model.early_stop: max epochs reached";
        (model_fn, best_R2, best_epochs))
     else if nb_fails = patience then
@@ -112,18 +102,19 @@ let early_stop verbose optimizer loss hidden_layers
        (model_fn, best_R2, best_epochs))
     else
       begin
-        DNNR.early_stop_continue verbose delta_epochs batch model_fn;
+        DNNR.early_stop_continue verbose config model_fn;
         let curr_R2 =
           let preds = DNNR.predict verbose model_fn test_fn in
           Cpm.RegrStats.r2 actual preds in
         if curr_R2 > best_R2 then
           (Log.info "%s %d R2_te: %.3f" arch_str curr_epochs curr_R2;
-           loop curr_R2 curr_epochs (curr_epochs + delta_epochs) 0)
+           loop curr_R2 curr_epochs (curr_epochs + config.delta_epochs) 0)
         else (* curr_R2 <= best_R2 *)
           (Log.warn "%s %d R2_te: %.3f" arch_str curr_epochs curr_R2;
-           loop best_R2 best_epochs (curr_epochs + delta_epochs) (nb_fails + 1))
+           loop best_R2 best_epochs (curr_epochs + config.delta_epochs)
+             (nb_fails + 1))
       end in
-  loop init_R2 delta_epochs (2*delta_epochs) 0
+  loop init_R2 config.delta_epochs (2 * config.delta_epochs) 0
 
 let main () =
   Log.(set_log_level DEBUG);
@@ -144,6 +135,8 @@ let main () =
                [-np <int>]: max CPU cores\n  \
                [--early-stop]: early stopping epochs scan\n  \
                [--NxCV <int>]: number of folds of cross validation\n  \
+               [--patience <int>]: tolerated number of training epochs\n  \
+                                   without improvement (default=5)\n  \
                [-s <filename>]: save trained model to file\n  \
                [-l <filename>]: restore trained model from file\n  \
                [--loss {RMSE|MSE|MAE}]: minimized loss and perf. metric\n  \
@@ -172,6 +165,7 @@ let main () =
   let maybe_test_fn = CLI.get_string_opt ["--test"] args in
   let nb_epochs = CLI.get_int ["--epochs"] args in
   let nfolds = CLI.get_int_def ["--NxCV"] args 1 in
+  let patience = CLI.get_int_def ["--patience"] args 5 in
   let train_portion = CLI.get_float_def ["-p"] args 0.8 in
   let loss =
     let loss_str = CLI.get_string_def ["--loss"] args "MSE" in
@@ -234,8 +228,7 @@ let main () =
           | [] -> assert(false)
           | (train, test) :: others ->
             let _model_fn, best_R2, best_epochs =
-              early_stop verbose optimizer loss hidden_layers
-                nb_epochs batch 1 5 train test in
+              early_stop verbose config patience train test in
             Log.info "best_R2: %.3f epochs: %d" best_R2 best_epochs;
             let r2s =
               (* FBR: BUG: we don't need compute an average
@@ -269,8 +262,7 @@ let main () =
           shuffle_then_cut seed train_portion train_fn' in
         if epochs_scan then
           let model_fn, best_R2, best_epochs =
-            early_stop verbose optimizer loss hidden_layers
-              nb_epochs batch 1 5 train_fn test_fn in
+            early_stop verbose config patience train_fn test_fn in
           Log.info "model_fn: %s best_R2: %.3f epochs: %d"
             model_fn best_R2 best_epochs
         else
