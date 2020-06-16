@@ -217,6 +217,8 @@ let main () =
     | (None, None) -> Discard
     | (Some _, Some _) -> failwith "Model: both -l and -s" in
   let batch = CLI.get_int_def ["-b"] args 32 in
+  (* core pinning: each R process is confined to a single core, but several
+     concurrent runs will be forced to execute/share the same cores! *)
   let core_pin = CLI.get_set_bool ["--core-pin"] args in
   CLI.finalize ();
   (* batch size compared to training set size check *)
@@ -262,7 +264,6 @@ let main () =
                 verbose config config.delta_epochs patience train test in
             Log.info "best_R2: %.3f epochs: %d" best_R2 best_epochs;
             let actual_preds =
-              (* core pin so that each R process is confined to one core *)
               let config' = { config with max_epochs = best_epochs } in
               Parmap.parmap ~core_pin ncores (fun (train_fn, test_fn) ->
                   (* all other folds will use the same number of epochs *)
@@ -274,7 +275,6 @@ let main () =
             ignore(r2_plot no_plot config actual preds)
         else
           let actual_preds =
-            (* core pin so that each R process is confined to one core *)
             Parmap.parmap ~core_pin ncores (fun (train_fn, test_fn) ->
                 train_test_raw
                   verbose save_or_load config train_fn test_fn
