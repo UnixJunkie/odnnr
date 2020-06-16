@@ -238,8 +238,9 @@ let exponential_scan n =
     else loop (x :: acc) (2 * x) in
   loop [] 1
 
-let fst3 (a, _, _) =
-  a
+let fst3 (a, _, _) = a
+let snd3 (_, b, _) = b
+let trd3 (_, _, c) = c
 
 let favg = function
   | [] -> 0.0 (* protect against empty list *)
