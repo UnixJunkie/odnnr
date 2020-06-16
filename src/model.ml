@@ -71,10 +71,15 @@ let train verbose save_or_load config train_fn =
 let test verbose model_fn test_fn =
   DNNR.predict verbose model_fn test_fn
 
-let train_test verbose save_or_load no_plot config train_fn test_fn =
+let train_test_raw verbose save_or_load config train_fn test_fn =
   let model_fn = train verbose save_or_load config train_fn in
   let actual = extract_values verbose test_fn in
   let preds = test verbose model_fn test_fn in
+  (model_fn, actual, preds)
+
+let train_test verbose save_or_load no_plot config train_fn test_fn =
+  let _model_fn, actual, preds =
+    train_test_raw verbose save_or_load config train_fn test_fn in
   let test_R2 = Cpm.RegrStats.r2 actual preds in
   (if not no_plot then
      let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
