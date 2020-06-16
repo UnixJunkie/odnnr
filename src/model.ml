@@ -85,6 +85,8 @@ let train_test verbose save_or_load no_plot config train_fn test_fn =
   test_R2
 
 let early_stop verbose config epochs_start patience train_fn test_fn =
+  Log.info "early_stop start: %d epochs; incr: %d patience: %d"
+    epochs_start DNNR.(config.delta_epochs) patience;
   let actual = extract_values verbose test_fn in
   let arch_str = DNNR.(string_of_layers config.hidden_layers) in
   let model_fn = Fn.temp_file "odnnr_model_" ".bin" in
@@ -267,13 +269,15 @@ let main () =
         Log.info "shuffle -> train/test split (p=%.2f)" train_portion;
         let train_fn, test_fn =
           shuffle_then_cut seed train_portion train_fn' in
-        if epochs_scan then
+        if epochs_scan || BatOption.is_some persevere then
           let model_fn, best_R2, best_epochs =
             match persevere with
             | None ->
               early_stop
                 verbose config config.delta_epochs patience train_fn test_fn
             | Some known_best_epochs ->
+              (* start early stopping training starting from known_best_epochs
+               * and using a delta epochs of 1 *)
               let config' = { config with delta_epochs = 1 } in
               early_stop
                 verbose config' known_best_epochs patience train_fn test_fn in
