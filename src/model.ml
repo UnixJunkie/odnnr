@@ -77,17 +77,20 @@ let train_test_raw verbose save_or_load config train_fn test_fn =
   let preds = test verbose model_fn test_fn in
   (model_fn, actual, preds)
 
-let train_test verbose save_or_load no_plot config train_fn test_fn =
-  let _model_fn, actual, preds =
-    train_test_raw verbose save_or_load config train_fn test_fn in
+let r2_plot no_plot config actual preds =
   let test_R2 = Cpm.RegrStats.r2 actual preds in
   (if not no_plot then
      let title = sprintf "DNN model fit; R2=%.2f" test_R2 in
      Gnuplot.regr_plot title actual preds
   );
-  let arch_str = DNNR.string_of_layers config.hidden_layers in
+  let arch_str = DNNR.(string_of_layers config.hidden_layers) in
   Log.info "%s %d R2_te: %.3f" arch_str config.max_epochs test_R2;
   test_R2
+
+let train_test verbose save_or_load no_plot config train_fn test_fn =
+  let _model_fn, actual, preds =
+    train_test_raw verbose save_or_load config train_fn test_fn in
+  r2_plot no_plot config actual preds
 
 let early_stop verbose config epochs_start patience train_fn test_fn =
   Log.info "early_stop start: %d epochs; incr: %d patience: %d"
@@ -124,6 +127,16 @@ let early_stop verbose config epochs_start patience train_fn test_fn =
       end in
   loop init_R2 epochs_start (epochs_start + config.delta_epochs) 0
 
+let expand_arch_str s =
+  if not (BatString.contains s '^') then s
+  else
+    (* 512^4 -> 512/512/512/512 *)
+    try Scanf.sscanf s "%d^%d" (fun layer_size nb_layers ->
+        let l = L.make nb_layers layer_size in
+        Utls.string_of_list ~pre:"" ~sep:"/" ~suf:"" string_of_int l)
+    with exn -> (Log.error "Model.expand_arch_str: cannot parse: %s" s;
+                 raise exn)
+
 let main () =
   Log.(set_log_level DEBUG);
   Log.color_on ();
@@ -144,9 +157,9 @@ let main () =
                [--early-stop]: early stopping epochs scan\n  \
                [--NxCV <int>]: number of folds of cross validation\n  \
                [--patience <int>]: tolerated number of training epochs\n  \
-                                   without improvement (default=5)\n  \
+               without improvement (default=5)\n  \
                [--persevere <int>]: train to specified number of epochs then
-                                    early stop with delta_epochs=1\n  \
+               early stop with delta_epochs=1\n  \
                [--delta <int>]: epochs delta upon training (default=10)\n  \
                [-s <filename>]: save trained model to file\n  \
                [-l <filename>]: restore trained model from file\n  \
@@ -155,9 +168,11 @@ let main () =
                [--optim {SGD|RMS|Ada|AdaD|AdaG|AdaM|Nada|Ftrl}]: optimizer\n  \
                (default=RMS)\n  \
                [--active {relu|sigmo}]: hidden layer activation function\n  \
-               [--arch {<int>/<int>/...}]: size of each hidden layer\n  \
+               [--arch {<int>/<int>/...}|<int>^<int>]: size of each\n  \
+               hidden layer or layer_size^nb_layers\n  \
                [-o <filename>]: predictions output file\n  \
                [--no-plot]: don't call gnuplot\n  \
+               [--core-pin]: core pinning (default=off)\n  \
                [-v]: verbose/debug mode\n  \
                [-h|--help]: show this message\n"
         Sys.argv.(0) train_portion_def;
@@ -189,7 +204,8 @@ let main () =
   let activation =
     let activation_str = CLI.get_string_def ["--active"] args "relu" in
     DNNR.activation_of_string activation_str in
-  let arch_str = CLI.get_string_def ["--arch"] args "64/64" in
+  let arch_str =
+    expand_arch_str (CLI.get_string_def ["--arch"] args "64/64") in
   let scores_fn = match CLI.get_string_opt ["-o"] args with
     | None -> Fn.temp_file "odnnr_preds_" ".txt"
     | Some fn -> fn in
@@ -201,6 +217,7 @@ let main () =
     | (None, None) -> Discard
     | (Some _, Some _) -> failwith "Model: both -l and -s" in
   let batch = CLI.get_int_def ["-b"] args 32 in
+  let core_pin = CLI.get_set_bool ["--core-pin"] args in
   CLI.finalize ();
   (* batch size compared to training set size check *)
   (match maybe_train_fn with
@@ -239,34 +256,32 @@ let main () =
           (* we only train w/ early stopping the first fold *)
           match train_test_fns with
           | [] -> assert(false)
-          | (train, test) :: others ->
+          | (train, test) :: _others ->
             let _model_fn, best_R2, best_epochs =
               early_stop
                 verbose config config.delta_epochs patience train test in
             Log.info "best_R2: %.3f epochs: %d" best_R2 best_epochs;
-            let r2s =
-              (* FBR: BUG: we don't need compute an average
-               * R2; we must gather all the predictions and create a single
-               * regression plot and compute a single R2 *)
+            let actual_preds =
               (* core pin so that each R process is confined to one core *)
               let config' = { config with max_epochs = best_epochs } in
-              Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
+              Parmap.parmap ~core_pin ncores (fun (train_fn, test_fn) ->
                   (* all other folds will use the same number of epochs *)
-                  train_test
-                    verbose save_or_load no_plot config' train_fn test_fn
-                ) others in
-            let r2_avg = Utls.favg (best_R2 :: r2s) in
-            let arch_str = DNNR.string_of_layers hidden_layers in
-            Log.info "%s %d avg(R2_te): %.3f" arch_str best_epochs r2_avg
+                  train_test_raw
+                    verbose save_or_load config' train_fn test_fn
+                ) train_test_fns in
+            let actual = L.concat (L.map Utls.snd3 actual_preds) in
+            let preds = L.concat (L.map Utls.trd3 actual_preds) in
+            ignore(r2_plot no_plot config actual preds)
         else
-          let r2s =
+          let actual_preds =
             (* core pin so that each R process is confined to one core *)
-            Parmap.parmap ~core_pin:true ncores (fun (train_fn, test_fn) ->
-                train_test verbose save_or_load no_plot config train_fn test_fn
+            Parmap.parmap ~core_pin ncores (fun (train_fn, test_fn) ->
+                train_test_raw
+                  verbose save_or_load config train_fn test_fn
               ) train_test_fns in
-          let r2_avg = Utls.favg r2s in
-          let arch_str = DNNR.string_of_layers hidden_layers in
-          Log.info "%s %d avg(R2_te): %.3f" arch_str nb_epochs r2_avg
+          let actual = L.concat (L.map Utls.snd3 actual_preds) in
+          let preds = L.concat (L.map Utls.trd3 actual_preds) in
+          ignore(r2_plot no_plot config actual preds)
       end
     else
       begin (* no cross validation *)
