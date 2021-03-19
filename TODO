@@ -1,0 +1,6 @@
+
+ - train a RFR and see its perf
+
+ - redo 50 times the keras xp
+
+ - those will give us a baseline...
