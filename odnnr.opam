@@ -35,13 +35,13 @@ January 2018, ISBN 9781617295546.
 """
 post-messages:
   """
-Please interact with R to install required dependencies in user-space:
+Please interact with pip3 then R to install required dependencies in user-space:
+pip3 install tensorflow keras
 R
 install.packages('keras', repos='http://cran.r-project.org')
-library(keras)
-install_keras(method = 'conda', tensorflow = 'cpu')""" {failure}
+library(keras)""" {failure}
 extra-files: [
-  ["install_keras.r" "md5=b07326eec56b36df7a2aba08b29264e5"]
+  ["install_keras.r" "md5=ad1bb71c78db06e7a38b24ec6b34273d"]
 ]
 # url {
 #   src: "https://github.com/UnixJunkie/odnnr/archive/XXX"
