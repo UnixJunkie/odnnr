@@ -4,17 +4,13 @@ authors: ["Francois Berenger"]
 homepage: "https://github.com/UnixJunkie/odnnr"
 bug-reports: "https://github.com/UnixJunkie/odnnr/issues"
 dev-repo: "git+https://github.com/UnixJunkie/odnnr.git"
-license: "LGPL-2.1-only with OCaml-LGPL-linking-exception"
-install: [
-  ["R" "CMD" "BATCH" "files/install_keras.r"]
-]
-build: [
-  ["dune" "build" "-p" name "-j" jobs]
-]
+license: "LGPL-2.1-only WITH OCaml-LGPL-linking-exception"
+install: ["R" "CMD" "BATCH" "files/install_keras.r"]
+build: ["dune" "build" "-p" name "-j" jobs]
 depends: [
   "ocaml"
   "conf-r"
-  "dune" {>= "1.0.0"}
+  "dune" {>= "1.11.0"}
   "dolog" {>= "4.0.0"}
   "batteries"
   "minicli" {>= "5.0.0"}
@@ -22,6 +18,7 @@ depends: [
   "cpm"
   "conf-gnuplot"
 ]
+x-ci-accept-failures: ["debian-unstable"]
 synopsis: "Regressor using a Deep Neural Network"
 description: """
 Some OCaml functions to drive the Deep Learning R 'keras' package;
@@ -43,7 +40,7 @@ library(keras)""" {failure}
 extra-files: [
   ["install_keras.r" "md5=ad1bb71c78db06e7a38b24ec6b34273d"]
 ]
-# url {
-#   src: "https://github.com/UnixJunkie/odnnr/archive/XXX"
-#   checksum: "md5=YYY"
-# }
+#url {
+#  src: "https://github.com/UnixJunkie/odnnr/archive/vXXX.tar.gz"
+#  checksum: "md5=YYY"
+#}
