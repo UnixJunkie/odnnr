@@ -172,7 +172,6 @@ let main () =
                hidden layer or layer_size^nb_layers\n  \
                [-o <filename>]: predictions output file\n  \
                [--no-plot]: don't call gnuplot\n  \
-               [--core-pin]: core pinning (default=off)\n  \
                [-v]: verbose/debug mode\n  \
                [-h|--help]: show this message\n"
         Sys.argv.(0) train_portion_def;
@@ -217,9 +216,6 @@ let main () =
     | (None, None) -> Discard
     | (Some _, Some _) -> failwith "Model: both -l and -s" in
   let batch = CLI.get_int_def ["-b"] args 32 in
-  (* core pinning: each R process is confined to a single core, but several
-     concurrent runs will be forced to execute/share the same cores! *)
-  let core_pin = CLI.get_set_bool ["--core-pin"] args in
   CLI.finalize ();
   (* batch size compared to training set size check *)
   (match maybe_train_fn with
@@ -265,7 +261,7 @@ let main () =
             Log.info "best_R2: %.3f epochs: %d" best_R2 best_epochs;
             let actual_preds =
               let config' = { config with max_epochs = best_epochs } in
-              Parmap.parmap ~core_pin ncores (fun (train_fn, test_fn) ->
+              Parmap.parmap ncores (fun (train_fn, test_fn) ->
                   (* all other folds will use the same number of epochs *)
                   train_test_raw
                     verbose save_or_load config' train_fn test_fn
@@ -275,7 +271,7 @@ let main () =
             ignore(r2_plot no_plot config actual preds)
         else
           let actual_preds =
-            Parmap.parmap ~core_pin ncores (fun (train_fn, test_fn) ->
+            Parmap.parmap ncores (fun (train_fn, test_fn) ->
                 train_test_raw
                   verbose save_or_load config train_fn test_fn
               ) train_test_fns in
